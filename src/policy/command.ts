@@ -49,12 +49,12 @@ interface Rule {
 /** Matched against the joined argv. Critical = production/irreversible; needs approval immediately before the action. */
 const RULES: readonly Rule[] = [
   { re: /(^|\s)sudo(\s|$)/, cls: 'critical', why: 'privilege escalation' },
-  { re: /\brm\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r|--recursive)/i, cls: 'destructive', why: 'recursive delete' },
-  { re: /\bgit\s+push\b.*(--force|-f\b|--delete|\+)/, cls: 'critical', why: 'force/destructive push' },
-  { re: /\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f|checkout\s+--\s|branch\s+-D)/, cls: 'destructive', why: 'discards work' },
-  { re: /\b(terraform|tofu)\s+(apply|destroy)\b/, cls: 'critical', why: 'infrastructure change' },
-  { re: /\bkubectl\s+(delete|apply|replace|patch|scale|rollout)\b/, cls: 'critical', why: 'cluster mutation' },
-  { re: /\bhelm\s+(install|upgrade|uninstall|rollback)\b/, cls: 'critical', why: 'cluster mutation' },
+  { re: /\brm\b(?=.*\s-[a-z]*r)(?=.*\s-[a-z]*f)|\brm\b.*--recursive/i, cls: 'destructive', why: 'recursive delete' },
+  { re: /\bgit\b.*\bpush\b.*(--force|-f\b|--delete|\s\+)/, cls: 'critical', why: 'force/destructive push' },
+  { re: /\bgit\b.*\b(reset\s+--hard|clean\s+-[a-z]*f|checkout\s+--\s|branch\s+-D)/, cls: 'destructive', why: 'discards work' },
+  { re: /\b(terraform|tofu)\b.*\b(apply|destroy)\b/, cls: 'critical', why: 'infrastructure change' },
+  { re: /\bkubectl\b.*\b(delete|apply|replace|patch|scale|rollout)\b/, cls: 'critical', why: 'cluster mutation' },
+  { re: /\bhelm\b.*\b(install|upgrade|uninstall|rollback)\b/, cls: 'critical', why: 'cluster mutation' },
   { re: /\b(docker|podman)\s+push\b/, cls: 'critical', why: 'publishes an image' },
   { re: /\b(npm|pnpm|yarn)\s+publish\b|\bcargo\s+publish\b|\btwine\s+upload\b/, cls: 'critical', why: 'publishes a package' },
   { re: /\bgh\s+(release\s+(create|delete)|repo\s+(delete|edit)|api\b.*(-X|--method)\s*(DELETE|PUT|PATCH))/i, cls: 'critical', why: 'GitHub destructive/admin call' },
@@ -90,4 +90,9 @@ export function evaluateCommand(line: string, policy: CommandPolicy): CommandDec
   }
   if (policy.allowed.some((p) => argvPrefixMatches(argv, p))) return { verdict: 'allow', cls: 'allowed', reason: 'allowlisted', argv };
   return { verdict: 'deny', cls: 'unlisted', reason: `"${argv[0]}" is not on the command allowlist; add it to .proofloop/config.json allowedCommands`, argv };
+}
+
+/** Splits a command line on shell separators and substitutions so each piece can be judged on its own. */
+export function commandSegments(line: string): string[] {
+  return line.split(/&&|\|\||[;|&\n`]|\$\(|\)/).map((x) => x.trim()).filter(Boolean);
 }

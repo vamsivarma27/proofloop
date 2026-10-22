@@ -27,7 +27,25 @@ Source code and history; credentials in the environment and `~/.config` (gh, Cla
 | Duplicate GitHub writes after retries | marker-based idempotency + outbox; outages are reported as queued, not synced | `github` |
 | Hook crash/timeout lets a call through | `onFailure: block`; unreadable input exits 2 | `cli` |
 
+## Independent review (fresh-context reviewer, 2026-10-22)
+A reviewer with no access to this conversation read the sensitive modules and reported 10 findings. Fixed in code, each with a test in `tests/hardening.test.ts`:
+- **Ledger forgery (critical):** gate results and approvals are now HMAC-signed with a key outside any repository (`~/.proofloop/ledger.key`, mode 600). Unsigned or altered rows are ignored by the guards, plan approval is derived from signed rows (not the editable column), and delivery reports forged rows. Gate commands are allowed to the agent as exact commands only (no `*`), and the agent is denied `sqlite3`, `.proofloop/**` and the key.
+- **Hook bypasses:** compound commands and reordered flags (`ls; terraform apply`, `rm -r -f`, `git -C . push --force`) are judged per segment; agent access to the state database, key or CLI internals is denied.
+- **Test harness weakening:** changes to runner config and `scripts.test|lint|build|…`, plus more skip markers, need an approved `test-change`.
+- **Evidence vs what is pushed:** a gate that changes HEAD or tracked files is BLOCKED; delivery refuses a branch tip that is not the verified commit.
+- **Scope/paths:** rename sources are checked; deny lists are case-insensitive and cover `.npmrc`, `.netrc`, `.envrc`, kube/docker config.
+- **Redaction:** titles are redacted; added database URLs, provider keys, JWTs, npm tokens; browser traces are labelled `binary-unredacted` instead of falsely `redacted`.
+- **Sandbox:** call limit counts at receipt (bursts), garbage output and EPIPE cannot crash the host.
+- **GitHub markers:** only the authenticated user's issues/comments count for dedupe, so a third party cannot suppress checkpoints.
+
+Not fixed, by design or by limit: see the next section.
+
 ## Residual risks (stated, not hidden)
+- **Same-user code execution.** A script the agent writes and a gate then runs executes with your privileges. The ledger key and signatures make forgery require reading the key (blocked for agent tools, not for arbitrary code), so this raises the bar; real isolation needs an OS sandbox or container for gate commands, which is not implemented.
+- Gated approvals (`test-change`, `behavior-change`, `destructive-migration`) are bound to a run, not to a commit or a specific finding; one grant covers later commits of the same run.
+- Gitignored build outputs present in the worktree are not part of the commit, so a test can pass against files the PR does not contain.
+- Assertion-count checks can be defeated by rewriting assertions to equally many trivial ones (`expect(1).toBe(1)`); the reviewer and a human remain responsible.
+- Whether Claude Code regex-matches hook matchers such as `MultiEdit` against `Edit` is not verified; the hook lists tools explicitly.
 - A user who runs Claude Code with permissions bypassed (`--dangerously-skip-permissions`) removes the interactive confirmation for approvals. The engine still requires a `human:*` actor, but the CLI cannot tell a human from a bypassed agent in that mode.
 - The append-only ledger is enforced by SQLite triggers; anyone with write access to `.proofloop/state.db` can alter it. Do not treat it as tamper-proof.
 - Gate commands run with your user's privileges in a worktree; a malicious repository's test script can still do harm. Only approve plans for repositories you trust.

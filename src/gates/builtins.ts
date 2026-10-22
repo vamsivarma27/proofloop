@@ -33,7 +33,7 @@ export async function testIntegrity(ctx: GateRunCtx): Promise<BuiltinOutcome> {
   const findings = analyzeTestDiff(d.diff, declaredTestFiles(ctx));
   if (findings.length === 0) return pass('no weakened, skipped or deleted tests in the diff');
   if (ctx.store.hasGatedApproval(ctx.runId, TEST_CHANGE_SCOPE)) return pass(`${findings.length} test change(s) covered by an approved test-change`);
-  return fail(`unapproved test weakening: ${findings.map((f) => `${f.file} (${f.kind}: ${f.detail})`).join('; ')}`, 'test-weakened');
+  return fail(`unapproved test-harness or test weakening: ${findings.map((f) => `${f.file} (${f.kind}: ${f.detail})`).join('; ')}`, 'test-weakened');
 }
 
 const CONTRACT_FILES = /(^|\/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.(proto|graphql|prisma)$|(^|\/)schema\.[a-z]+$|(^|\/)migrations?\//i;

@@ -69,6 +69,7 @@ describe('adapter contract suite runs against the built-in adapters (CI gate)', 
     const issues: Array<{ n: number; body: string }> = [];
     const exec: Exec = async (_c, args) => {
       const a = args.join(' ');
+      if (a === 'api user --jq .login') return ok('me');
       if (args[3] === 'search/issues') {
         const key = /proofloop:key=([^"]+)"/.exec(args.find((x) => x.startsWith('q='))!)![1]!;
         return ok(issues.filter((i) => i.body.includes(`key=${key} `)).map((i) => JSON.stringify([i.n, `N${i.n}`, `u${i.n}`, i.body])).join('\n'));

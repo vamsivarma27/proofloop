@@ -71,7 +71,8 @@ export function gateCtx(d: EngineDeps, runId: string, cwd: string, commitSha: st
 export const totalCostUsd = (d: EngineDeps, runId: string): number => d.store.events(runId, 'agent.cost').reduce((n, e) => n + Number(e.data.usd ?? 0), 0);
 
 export function implementerTools(d: EngineDeps, runId: string): string[] {
-  const cmds = policyFor(d, runId).allowed.flatMap((p) => [`Bash(${p.join(' ')})`, `Bash(${p.join(' ')} *)`]);
+  // exact commands only: a trailing wildcard would let the agent inject flags such as --config or --script-shell
+  const cmds = policyFor(d, runId).allowed.map((p) => `Bash(${p.join(' ')})`);
   return [...ROLE_TOOLS.implementer, ...cmds];
 }
 

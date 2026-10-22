@@ -32,5 +32,8 @@ Built in one pass from `PROOFLOOP_PRD.md`; each section maps to a roadmap releas
 ### Evaluation
 - 22-task scripted suite with hidden acceptance checks and a no-harness baseline. The first run found and fixed two harness defects (see git history: test-integrity missed plan-declared test files; directory evidence broke integrity checking).
 
+### Security review
+- Fresh-context review found 10 issues (1 critical); fixes and residual risks in docs/security/threat-model.md.
+
 ### Known limitations
 - Cloudflare Code Mode adapter not implemented. No real-model evaluation published. Windows unsupported. License undecided.

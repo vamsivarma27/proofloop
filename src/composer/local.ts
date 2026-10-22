@@ -27,6 +27,7 @@ function truncateValue(v: unknown, max: number): { value: unknown; truncated: bo
 export class LocalToolComposer implements ToolComposer {
   readonly name = 'local-sandbox';
   private readonly tools: Map<string, ToolDef>;
+  private received = 0;
   constructor(
     private readonly ctx: ToolContext,
     deps: ToolDeps & { tools?: ToolDef[]; audit?: (call: CallAudit) => void } = {},
@@ -45,6 +46,7 @@ export class LocalToolComposer implements ToolComposer {
 
   async run(program: string, opts: ComposeOptions = {}): Promise<ComposeResult> {
     const started = Date.now();
+    this.received = 0;
     const limits = { ...DEFAULT_LIMITS, ...opts.limits };
     const support = this.available();
     const calls: CallAudit[] = [];
@@ -76,6 +78,7 @@ export class LocalToolComposer implements ToolComposer {
     const timer = setTimeout(() => kill(`time limit of ${limits.maxDurationMs}ms exceeded`), limits.maxDurationMs);
     signal?.addEventListener('abort', () => kill('cancelled'));
     let stderrText = '';
+    child.stdin.on('error', () => undefined); // the child may already be killed
     child.stderr.on('data', (d: Buffer) => void (stderrText += d.toString().slice(0, 2000)));
     let stdoutBytes = 0;
     let buffer = '';
@@ -87,7 +90,13 @@ export class LocalToolComposer implements ToolComposer {
       while ((nl = buffer.indexOf('\n')) >= 0) {
         const line = buffer.slice(0, nl);
         buffer = buffer.slice(nl + 1);
-        void this.onMessage(JSON.parse(line) as Record<string, unknown>, child, limits, writes, calls, (n) => (bytesIn += n), kill, (v) => void (box.verdict ??= v));
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(line) as Record<string, unknown>;
+        } catch {
+          return kill('sandbox protocol violation: non-JSON output');
+        }
+        void this.onMessage(parsed, child, limits, writes, calls, (n) => (bytesIn += n), kill, (v) => void (box.verdict ??= v));
       }
     });
     child.stdin.write(`${JSON.stringify({ type: 'program', code: program, tools: [...this.tools.keys()] })}\n`);
@@ -106,7 +115,8 @@ export class LocalToolComposer implements ToolComposer {
     if (msg.type !== 'call') return;
     const id = msg.id as number;
     const reply = (m: object): void => void child.stdin?.write(`${JSON.stringify({ type: 'result', id, ...m })}\n`);
-    if (calls.length >= limits.maxCalls) return kill(`call limit of ${limits.maxCalls} exceeded`);
+    // count at receipt: a burst of concurrent calls must not slip past a limit that only counts completed calls
+    if (++this.received > limits.maxCalls) return kill(`call limit of ${limits.maxCalls} exceeded`);
     const name = String(msg.name);
     const t0 = Date.now();
     const audit = (a: Omit<CallAudit, 'tool' | 'ms'>): void => {

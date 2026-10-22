@@ -50,7 +50,7 @@ export const ROLE_TOOLS: Record<AgentRole, readonly string[]> = {
 };
 
 /** Always denied to agents regardless of role: they must not touch approvals, state or gates. */
-export const ALWAYS_DENIED = ['Bash(proofloop approve *)', 'Bash(proofloop reject *)', 'Bash(proofloop gates *)', 'Bash(proofloop cancel *)', 'Bash(proofloop run *)', 'Bash(git push *)', 'Bash(git commit *--no-verify*)', 'Bash(sudo *)', 'Bash(rm -rf *)'] as const;
+export const ALWAYS_DENIED = ['Bash(sqlite3 *)', 'Bash(*state.db*)', 'Bash(*ledger.key*)', 'Read(**/.proofloop/**)', 'Read(**/ledger.key)', 'Edit(**/.proofloop/**)', 'Write(**/.proofloop/**)', 'Bash(proofloop approve *)', 'Bash(proofloop reject *)', 'Bash(proofloop gates *)', 'Bash(proofloop cancel *)', 'Bash(proofloop run *)', 'Bash(git push *)', 'Bash(git commit *--no-verify*)', 'Bash(sudo *)', 'Bash(rm -rf *)'] as const;
 
 export const MIN_CLAUDE_VERSION = [2, 1, 259] as const;
 
@@ -104,7 +104,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     if (req.jsonSchema) args.push('--json-schema', JSON.stringify(req.jsonSchema));
     if (req.appendSystemPrompt) args.push('--append-system-prompt', req.appendSystemPrompt);
     if (this.opts.guardCommand) {
-      const hook = { hooks: { PreToolUse: [{ matcher: 'Bash|Edit|Write', hooks: [{ type: 'command', command: `${JSON.stringify(this.opts.guardCommand)} hook pre-tool-use` }] }] } };
+      const hook = { hooks: { PreToolUse: [{ matcher: 'Bash|Write|Edit|MultiEdit|NotebookEdit|Read', hooks: [{ type: 'command', command: `${JSON.stringify(this.opts.guardCommand)} hook pre-tool-use` }] }] } };
       args.push('--settings', JSON.stringify(hook));
     }
     return args;

@@ -19,6 +19,7 @@ function fakeGh() {
     if (down) return err('connection refused');
     const a = args.join(' ');
     if (a.startsWith('auth status')) return ok();
+    if (a === 'api user --jq .login') return ok('me');
     if (a.startsWith('repo view')) return ok('o/r\tADMIN');
     if (args[0] === 'api' && args[1] === '-X' && args[3] === 'search/issues') {
       const q = args.find((x) => x.startsWith('q='))!;

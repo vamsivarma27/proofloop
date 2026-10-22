@@ -64,9 +64,14 @@ export class GhAdapter implements GithubPort {
     return { ok: problems.length === 0, repo: this.repo, problems, canWrite };
   }
 
+  private login: string | null = null;
+  private async me(): Promise<string> {
+    return (this.login ??= await this.gh(['api', 'user', '--jq', '.login']));
+  }
+
   private async findByMarker(key: string): Promise<IssueRef | null> {
     const q = `"proofloop:key=${key}" in:body`;
-    const out = await this.gh(['api', '-X', 'GET', 'search/issues', '-f', `q=repo:${this.repo} is:issue ${q}`, '--jq', '.items[] | [.number,.node_id,.html_url,.body] | @json']);
+    const out = await this.gh(['api', '-X', 'GET', 'search/issues', '-f', `q=repo:${this.repo} is:issue ${q}`, '--jq', `.items[] | select(.user.login == "${await this.me()}") | [.number,.node_id,.html_url,.body] | @json`]);
     for (const line of out.split('\n').filter(Boolean)) {
       const [number, nodeId, url, body] = JSON.parse(line) as [number, string, string, string];
       if (body.includes(marker(key))) return { number, nodeId, url };
@@ -78,7 +83,7 @@ export class GhAdapter implements GithubPort {
   async ensureIssue(key: string, title: string, body: string, labels: string[] = [], milestone?: string): Promise<IssueRef> {
     const found = await this.findByMarker(key);
     if (found) return found;
-    const args = ['api', `repos/${this.repo}/issues`, '-f', `title=${title}`, '-f', `body=${redact(body).slice(0, MAX_BODY)}\n\n${marker(key)}`];
+    const args = ['api', `repos/${this.repo}/issues`, '-f', `title=${redact(title)}`, '-f', `body=${redact(body).slice(0, MAX_BODY)}\n\n${marker(key)}`];
     for (const l of labels) args.push('-f', `labels[]=${l}`);
     if (milestone) args.push('-f', `milestone=${milestone}`);
     const out = await this.gh([...args, '--jq', '[.number,.node_id,.html_url]|@json']);
@@ -88,7 +93,7 @@ export class GhAdapter implements GithubPort {
 
   async addCheckpoint(issue: IssueRef, key: string, body: string): Promise<void> {
     const tag = marker(key);
-    const existing = await this.gh(['api', `repos/${this.repo}/issues/${issue.number}/comments`, '--paginate', '--jq', '.[].body']);
+    const existing = await this.gh(['api', `repos/${this.repo}/issues/${issue.number}/comments`, '--paginate', '--jq', `.[] | select(.user.login == "${await this.me()}") | .body`]);
     if (existing.includes(tag)) return;
     await this.gh(['api', `repos/${this.repo}/issues/${issue.number}/comments`, '-f', `body=${redact(body).slice(0, MAX_BODY)}\n\n${tag}`]);
   }
@@ -118,7 +123,7 @@ export class GhAdapter implements GithubPort {
   async openPullRequest(input: { head: string; base: string; title: string; body: string; cwd: string }): Promise<string> {
     const existing = await this.gh(['pr', 'list', '--repo', this.repo, '--head', input.head, '--state', 'open', '--json', 'url', '--jq', '.[0].url // ""'], { cwd: input.cwd });
     if (existing) return existing;
-    return this.gh(['pr', 'create', '--repo', this.repo, '--head', input.head, '--base', input.base, '--title', input.title, '--body', redact(input.body).slice(0, MAX_BODY)], { cwd: input.cwd });
+    return this.gh(['pr', 'create', '--repo', this.repo, '--head', input.head, '--base', input.base, '--title', redact(input.title), '--body', redact(input.body).slice(0, MAX_BODY)], { cwd: input.cwd });
   }
 
   async getPullRequest(url: string): Promise<{ state: 'OPEN' | 'MERGED' | 'CLOSED'; checks: 'success' | 'failure' | 'pending' | 'none' }> {

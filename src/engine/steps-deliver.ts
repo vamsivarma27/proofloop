@@ -23,6 +23,11 @@ export async function stepDeliver(d: EngineDeps, runId: string): Promise<Deliver
     await block(d, runId, `evidence integrity check failed: ${problems.map((p) => p.problem).join('; ')}`);
     return 'delivered';
   }
+  const tip = await d.git.head(run.worktreePath!);
+  if (tip !== run.headSha || (await d.git.hasTrackedChanges(run.worktreePath!))) {
+    await block(d, runId, `worktree tip ${tip.slice(0, 8)} differs from the verified commit ${run.headSha?.slice(0, 8)}; refusing to deliver unverified content`);
+    return 'delivered';
+  }
   const step = d.store.beginStep(runId, 'deliver');
   if (!d.port) {
     d.store.setFields(runId, { prUrl: `${LOCAL_PREFIX}${run.activeBranch}@${run.headSha}` });

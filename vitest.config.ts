@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
+    env: { PROOFLOOP_KEY_FILE: `${process.env.TMPDIR ?? '/tmp'}/proofloop-test-ledger.key` },
     testTimeout: 120_000,
     hookTimeout: 120_000,
     coverage: {

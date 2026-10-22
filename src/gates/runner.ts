@@ -65,7 +65,7 @@ function record(ctx: GateRunCtx, entry: GatePlanEntry, r: { state: GateState; ex
   const log = writeLog(ctx, entry.gateId, `$ ${r.command}\n[${r.state}] ${r.summary}\n\n${r.output}`);
   const ids = [
     ctx.store.addEvidence({ taskRunId: ctx.runId, gateId: entry.gateId, kind: 'gate-log', uri: log.uri, checksum: log.checksum, commitSha: ctx.commitSha, environment: ctx.environment, summary: redact(r.summary).slice(0, 300), redactionStatus: 'redacted' }),
-    ...(r.extra ?? []).map((e) => ctx.store.addEvidence({ taskRunId: ctx.runId, gateId: entry.gateId, kind: e.kind, uri: e.uri, checksum: e.checksum, commitSha: ctx.commitSha, environment: ctx.environment, summary: r.summary.slice(0, 300), redactionStatus: 'redacted' })),
+    ...(r.extra ?? []).map((e) => ctx.store.addEvidence({ taskRunId: ctx.runId, gateId: entry.gateId, kind: e.kind, uri: e.uri, checksum: e.checksum, commitSha: ctx.commitSha, environment: ctx.environment, summary: r.summary.slice(0, 300), redactionStatus: e.kind === 'browser-artifacts' ? 'binary-unredacted' : 'redacted' })),
   ];
   const id = ctx.store.recordGateResult({
     taskRunId: ctx.runId, gateId: entry.gateId, state: r.state, required: entry.required, commandOrAssertion: r.command, exitCode: r.exitCode,
@@ -136,6 +136,9 @@ async function execute(ctx: GateRunCtx, entry: GatePlanEntry, argv: string[], st
   } finally {
     await app?.stop();
   }
+  const after = await ctx.git.head(ctx.cwd);
+  if (after !== ctx.commitSha || (await ctx.git.hasTrackedChanges(ctx.cwd)))
+    return blocked(ctx, entry, started, 'gate-mutated-repo', 'the gate command changed HEAD or tracked files; its result no longer describes the candidate commit');
   return finish(ctx, entry, attempts, started);
 }
 

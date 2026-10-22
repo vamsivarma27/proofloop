@@ -4,6 +4,7 @@ import { redactValue } from '../shared/redact';
 import { ENGINE_VERSION } from '../version';
 import { type RiskLevel, riskRank } from '../protocol/schema';
 import { type Db, inTransaction } from './db';
+import { type Signer, fileSigner } from './signer';
 import { type GateSnapshot, type GateState, type GuardContext, type TaskState, checkGuards, isAllowedTransition } from './machine';
 
 export interface TaskRun {
@@ -89,7 +90,8 @@ export interface EvidenceInput {
   commitSha?: string | undefined;
   environment: string;
   summary: string;
-  redactionStatus: 'redacted' | 'none-needed';
+  /** binary-unredacted: traces/HARs/screenshots are stored as produced and may contain secrets; never uploaded by ProofLoop. */
+  redactionStatus: 'redacted' | 'none-needed' | 'binary-unredacted';
 }
 
 export interface Lease {
@@ -107,7 +109,16 @@ export class Store {
   constructor(
     readonly db: Db,
     readonly clock: Clock = systemClock,
+    readonly signer: Signer = fileSigner(),
   ) {}
+
+  private gateSig(r: { id: string; taskRunId: string; gateId: string; state: string; commitSha: string; seq: number; exitCode: number | null; evidenceIds: string[] }): string {
+    return this.signer.sign(['gate', r.id, r.taskRunId, r.gateId, r.state, r.commitSha, r.seq, r.exitCode, r.evidenceIds.join(',')]);
+  }
+
+  private approvalSig(id: string, run: string, scope: string, planHash: string | null, by: string, decision: string): string {
+    return this.signer.sign(['approval', id, run, scope, planHash, by, decision]);
+  }
 
   private all(sql: string, ...p: Array<string | number | null>): Row[] {
     return this.db.prepare(sql).all(...p) as Row[];
@@ -213,9 +224,10 @@ export class Store {
 
   guardContext(id: string): GuardContext {
     const r = this.getRun(id);
+    const signedApproval = this.all("SELECT * FROM approval WHERE task_run_id = ? AND scope = 'plan' AND decision = 'approve'", id).some((a) => a.plan_hash === r.currentPlanHash && this.validApproval(a));
     return {
       currentPlanHash: r.currentPlanHash,
-      approvedPlanHash: r.approvedPlanHash,
+      approvedPlanHash: signedApproval ? r.currentPlanHash : null,
       headSha: r.headSha,
       requiredGates: this.requiredGateSnapshots(id),
       repairCount: r.repairCount,
@@ -283,13 +295,14 @@ export class Store {
         if (a.planHash !== run.currentPlanHash) throw new PlError('PL_PLAN_003', 'approval references a stale plan hash; review the current plan');
         if (a.decision === 'approve') this.patch(id, { approved_plan_hash: a.planHash });
       }
-      this.run('INSERT INTO approval (id, task_run_id, scope, plan_hash, approved_by, decision, comment, created_at_utc) VALUES (?,?,?,?,?,?,?,?)', newId('apr'), id, a.scope, a.planHash, a.approvedBy, a.decision, a.comment ?? null, this.clock.nowIso());
+      const aid = newId('apr');
+      this.run('INSERT INTO approval (id, task_run_id, scope, plan_hash, approved_by, decision, comment, created_at_utc, sig) VALUES (?,?,?,?,?,?,?,?,?)', aid, id, a.scope, a.planHash, a.approvedBy, a.decision, a.comment ?? null, this.clock.nowIso(), this.approvalSig(aid, id, a.scope, a.planHash, a.approvedBy, a.decision));
       this.audit(id, `approval.${a.decision}`, a.approvedBy, { scope: a.scope, planHash: a.planHash });
     });
   }
 
   hasGatedApproval(id: string, scope: string): boolean {
-    return Boolean(this.one("SELECT 1 AS x FROM approval WHERE task_run_id = ? AND scope = ? AND decision = 'approve'", id, scope));
+    return this.all("SELECT * FROM approval WHERE task_run_id = ? AND scope = ? AND decision = 'approve'", id, scope).some((r) => this.validApproval(r));
   }
 
   approvals(id: string): Row[] {
@@ -331,10 +344,11 @@ export class Store {
     return inTransaction(this.db, () => {
       const seq = Number((this.one('SELECT COALESCE(MAX(seq),0) AS m FROM gate_result WHERE task_run_id = ?', g.taskRunId) as Row).m) + 1;
       const id = newId('gate');
+      const sig = this.gateSig({ id, taskRunId: g.taskRunId, gateId: g.gateId, state: g.state, commitSha: g.commitSha, seq, exitCode: g.exitCode, evidenceIds: g.evidenceIds });
       this.run(
-        `INSERT INTO gate_result (id, task_run_id, gate_id, state, required, command_or_assertion, exit_code, evidence_ids, commit_sha, started_at_utc, finished_at_utc, failure_category, fingerprint, seq)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        id, g.taskRunId, g.gateId, g.state, g.required ? 1 : 0, g.commandOrAssertion, g.exitCode, JSON.stringify(g.evidenceIds), g.commitSha, g.startedAtUtc, g.finishedAtUtc, g.failureCategory ?? null, g.fingerprint ?? null, seq,
+        `INSERT INTO gate_result (id, task_run_id, gate_id, state, required, command_or_assertion, exit_code, evidence_ids, commit_sha, started_at_utc, finished_at_utc, failure_category, fingerprint, seq, sig)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        id, g.taskRunId, g.gateId, g.state, g.required ? 1 : 0, g.commandOrAssertion, g.exitCode, JSON.stringify(g.evidenceIds), g.commitSha, g.startedAtUtc, g.finishedAtUtc, g.failureCategory ?? null, g.fingerprint ?? null, seq, sig,
       );
       return id;
     });
@@ -344,7 +358,7 @@ export class Store {
     const rows = gateId
       ? this.all('SELECT * FROM gate_result WHERE task_run_id = ? AND gate_id = ? ORDER BY seq', id, gateId)
       : this.all('SELECT * FROM gate_result WHERE task_run_id = ? ORDER BY seq', id);
-    return rows.map((r) => ({
+    return rows.filter((r) => this.validGate(r)).map((r) => ({
       id: r.id as string,
       seq: r.seq as number,
       taskRunId: r.task_run_id as string,
@@ -360,6 +374,24 @@ export class Store {
       failureCategory: (r.failure_category as string | null) ?? undefined,
       fingerprint: (r.fingerprint as string | null) ?? undefined,
     }));
+  }
+
+  private validGate(r: Row): boolean {
+    const evidenceIds = JSON.parse(r.evidence_ids as string) as string[];
+    return r.sig === this.gateSig({ id: r.id as string, taskRunId: r.task_run_id as string, gateId: r.gate_id as string, state: r.state as string, commitSha: r.commit_sha as string, seq: r.seq as number, exitCode: (r.exit_code as number | null) ?? null, evidenceIds });
+  }
+
+  /** Gate rows whose signature does not verify: evidence of tampering with the database. */
+  forgedGateRows(id: string): number {
+    return this.all('SELECT * FROM gate_result WHERE task_run_id = ?', id).filter((r) => !this.validGate(r)).length;
+  }
+
+  forgedApprovalRows(id: string): number {
+    return this.all('SELECT * FROM approval WHERE task_run_id = ?', id).filter((r) => !this.validApproval(r)).length;
+  }
+
+  private validApproval(r: Row): boolean {
+    return r.sig === this.approvalSig(r.id as string, r.task_run_id as string, r.scope as string, (r.plan_hash as string | null) ?? null, r.approved_by as string, r.decision as string);
   }
 
   requiredGateSnapshots(id: string): GateSnapshot[] {

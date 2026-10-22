@@ -27992,14 +27992,14 @@ var init_risk = __esm({
 });
 
 // src/policy/paths.ts
-import { existsSync as existsSync9, realpathSync } from "node:fs";
-import { basename as basename2, dirname as dirname4, relative as relative2, resolve, sep } from "node:path";
+import { existsSync as existsSync10, realpathSync } from "node:fs";
+import { basename as basename2, dirname as dirname5, relative as relative2, resolve, sep } from "node:path";
 function realish(p) {
   let cur = resolve(p);
   const tail = [];
-  while (!existsSync9(cur)) {
+  while (!existsSync10(cur)) {
     tail.unshift(basename2(cur));
-    const up = dirname4(cur);
+    const up = dirname5(cur);
     if (up === cur) break;
     cur = up;
   }
@@ -28010,7 +28010,7 @@ function checkPath(root, target, mode) {
   const resolved = realish(resolve(root, target));
   const rel = relative2(realRoot, resolved);
   if (rel === ".." || rel.startsWith(`..${sep}`) || resolve(rel) === rel) return { ok: false, reason: `path escapes the allowed root: ${target}` };
-  const norm2 = rel.split(sep).join("/");
+  const norm2 = rel.split(sep).join("/").toLowerCase();
   const deny2 = mode === "write" ? WRITE_DENY : READ_DENY;
   const hit = deny2.find((re) => re.test(norm2));
   if (hit) return { ok: false, reason: `${mode} to "${norm2}" is denied by policy` };
@@ -28042,9 +28042,10 @@ var init_paths = __esm({
       /(^|\/)\.github\/workflows\//,
       /(^|\/)node_modules(\/|$)/,
       /\.(pem|key|p12|pfx)$/,
-      /(^|\/)id_(rsa|ed25519|ecdsa)/
+      /(^|\/)id_(rsa|ed25519|ecdsa)/,
+      /(^|\/)\.(npmrc|netrc|envrc)$/
     ];
-    READ_DENY = [/(^|\/)\.env(\.|$)/, /\.(pem|key|p12|pfx)$/, /(^|\/)id_(rsa|ed25519|ecdsa)/, /(^|\/)\.proofloop\/state\.db/, /(^|\/)\.aws\//, /(^|\/)\.ssh\//];
+    READ_DENY = [/(^|\/)\.env(\.|$)/, /\.(pem|key|p12|pfx)$/, /(^|\/)id_(rsa|ed25519|ecdsa)/, /(^|\/)\.proofloop\//, /(^|\/)\.aws\//, /(^|\/)\.ssh\//, /(^|\/)\.(npmrc|netrc|envrc)$/, /(^|\/)\.kube\/config$/, /(^|\/)\.docker\/config\.json$/];
   }
 });
 
@@ -28210,12 +28211,12 @@ var init_workflow = __esm({
 });
 
 // src/cli/main.ts
-import { closeSync, openSync, readFileSync as readFileSync15, readSync } from "node:fs";
+import { closeSync, openSync, readFileSync as readFileSync16, readSync } from "node:fs";
 
 // src/cli/index.ts
 import { parseArgs } from "node:util";
-import { existsSync as existsSync15, mkdirSync as mkdirSync10, readFileSync as readFileSync14, writeFileSync as writeFileSync9 } from "node:fs";
-import { dirname as dirname8, join as join22, resolve as resolve2 } from "node:path";
+import { existsSync as existsSync16, mkdirSync as mkdirSync11, readFileSync as readFileSync15, writeFileSync as writeFileSync10 } from "node:fs";
+import { dirname as dirname9, join as join23, resolve as resolve2 } from "node:path";
 
 // src/shared/exec.ts
 import { execFile } from "node:child_process";
@@ -28260,7 +28261,12 @@ var SECRET_PATTERNS = [
   [/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED:aws-key]"],
   [/\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED:slack-token]"],
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{12,}/gi, "$1 [REDACTED:credential]"],
-  [/\b(https?:\/\/)[^\s/:@]+:[^\s/@]+@/g, "$1[REDACTED:userinfo]@"],
+  [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/:@]*:[^\s/@]+@/gi, "$1[REDACTED:userinfo]@"],
+  [/\b(sk|rk|pk)_(live|test)_[A-Za-z0-9]{10,}\b/g, "[REDACTED:api-key]"],
+  [/\bAIza[0-9A-Za-z_-]{30,}\b/g, "[REDACTED:api-key]"],
+  [/\bnpm_[A-Za-z0-9]{30,}\b/g, "[REDACTED:npm-token]"],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, "[REDACTED:jwt]"],
+  [/\b([A-Z0-9_]*(?:DATABASE_URL|CONNECTION_STRING|DSN|REDIS_URL|MONGO_URI)[A-Z0-9_]*)\s*[=:]\s*["']?[^\s"']{6,}["']?/gi, "$1=[REDACTED]"],
   [
     /\b([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|CREDENTIAL|PRIVATE_KEY)[A-Z0-9_]*)\s*[=:]\s*["']?[^\s"']{4,}["']?/gi,
     "$1=[REDACTED]"
@@ -28312,7 +28318,7 @@ var ROLE_TOOLS = {
   "product-discovery": ["Read", "Grep", "Glob"],
   "evidence-evaluator": READ_ONLY
 };
-var ALWAYS_DENIED = ["Bash(proofloop approve *)", "Bash(proofloop reject *)", "Bash(proofloop gates *)", "Bash(proofloop cancel *)", "Bash(proofloop run *)", "Bash(git push *)", "Bash(git commit *--no-verify*)", "Bash(sudo *)", "Bash(rm -rf *)"];
+var ALWAYS_DENIED = ["Bash(sqlite3 *)", "Bash(*state.db*)", "Bash(*ledger.key*)", "Read(**/.proofloop/**)", "Read(**/ledger.key)", "Edit(**/.proofloop/**)", "Write(**/.proofloop/**)", "Bash(proofloop approve *)", "Bash(proofloop reject *)", "Bash(proofloop gates *)", "Bash(proofloop cancel *)", "Bash(proofloop run *)", "Bash(git push *)", "Bash(git commit *--no-verify*)", "Bash(sudo *)", "Bash(rm -rf *)"];
 var MIN_CLAUDE_VERSION = [2, 1, 259];
 function parseVersion(text2) {
   const m = /(\d+)\.(\d+)\.(\d+)/.exec(text2);
@@ -28348,7 +28354,7 @@ var ClaudeCodeRuntime = class {
     if (req.jsonSchema) args.push("--json-schema", JSON.stringify(req.jsonSchema));
     if (req.appendSystemPrompt) args.push("--append-system-prompt", req.appendSystemPrompt);
     if (this.opts.guardCommand) {
-      const hook2 = { hooks: { PreToolUse: [{ matcher: "Bash|Edit|Write", hooks: [{ type: "command", command: `${JSON.stringify(this.opts.guardCommand)} hook pre-tool-use` }] }] } };
+      const hook2 = { hooks: { PreToolUse: [{ matcher: "Bash|Write|Edit|MultiEdit|NotebookEdit|Read", hooks: [{ type: "command", command: `${JSON.stringify(this.opts.guardCommand)} hook pre-tool-use` }] }] } };
       args.push("--settings", JSON.stringify(hook2));
     }
     return args;
@@ -28460,13 +28466,16 @@ function writeConfig(root, cfg) {
 // src/gates/integrity.ts
 var TEST_FILE = /(^|\/)(tests?|__tests__|spec|e2e)\/|\.(test|spec)\.[a-z]+$|(^|\/)test_[^/]+\.py$|_test\.(go|py)$/i;
 var ASSERT = /\b(expect|assert\w*|should|toBe\w*|toEqual|t\.(Error|Fatal|Fail)\w*)\b|===|!==|\bprocess\.exit\(/g;
-var SKIP = /\b(it|test|describe)\.(skip|todo)\b|\bx(it|describe)\(|@pytest\.mark\.skip|\bt\.Skip\(|\.only\(/;
+var SKIP = /\b(it|test|describe)\.(skip|todo|fixme|failing)\b|\bx(it|describe)\(|@pytest\.mark\.(skip|xfail)|\bpytest\.(skip|xfail)\(|@unittest\.skip|\bt\.Skip\(|\.only\(/;
+var HARNESS_FILE = /(^|\/)(vitest|jest|playwright|karma|cypress)\.config\.[a-z]+$|(^|\/)(pytest\.ini|conftest\.py|tox\.ini|\.mocharc[^/]*|setup\.cfg)$|(^|\/)Makefile$/;
+var SCRIPT_LINE = /^[-+]\s*"(test|lint|typecheck|build|check)[^"]*"\s*:/;
 var isTestFile = (path2) => TEST_FILE.test(path2);
 var tokens = (lines) => lines.reduce((n, l) => n + (l.match(ASSERT)?.length ?? 0), 0);
 function analyzeTestDiff(diff, declared = []) {
   const findings = [];
   for (const section of diff.split(/^diff --git /m).slice(1)) {
     const file2 = /^a\/(.+?) b\//.exec(section)?.[1];
+    if (file2 && (HARNESS_FILE.test(file2) || /(^|\/)package\.json$/.test(file2) && section.split("\n").some((l) => SCRIPT_LINE.test(l)))) findings.push({ file: file2, kind: "harness-changed", detail: "test runner configuration or scripts changed" });
     if (!file2 || !(isTestFile(file2) || declared.includes(file2))) continue;
     if (/^deleted file mode/m.test(section)) {
       findings.push({ file: file2, kind: "test-deleted", detail: "test file deleted" });
@@ -28507,7 +28516,7 @@ async function testIntegrity(ctx) {
   const findings = analyzeTestDiff(d.diff, declaredTestFiles(ctx));
   if (findings.length === 0) return pass("no weakened, skipped or deleted tests in the diff");
   if (ctx.store.hasGatedApproval(ctx.runId, TEST_CHANGE_SCOPE)) return pass(`${findings.length} test change(s) covered by an approved test-change`);
-  return fail2(`unapproved test weakening: ${findings.map((f) => `${f.file} (${f.kind}: ${f.detail})`).join("; ")}`, "test-weakened");
+  return fail2(`unapproved test-harness or test weakening: ${findings.map((f) => `${f.file} (${f.kind}: ${f.detail})`).join("; ")}`, "test-weakened");
 }
 var CONTRACT_FILES = /(^|\/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.(proto|graphql|prisma)$|(^|\/)schema\.[a-z]+$|(^|\/)migrations?\//i;
 async function contractDrift(ctx) {
@@ -28573,9 +28582,13 @@ var GhAdapter = class {
     }
     return { ok: problems.length === 0, repo: this.repo, problems, canWrite };
   }
+  login = null;
+  async me() {
+    return this.login ??= await this.gh(["api", "user", "--jq", ".login"]);
+  }
   async findByMarker(key2) {
     const q = `"proofloop:key=${key2}" in:body`;
-    const out = await this.gh(["api", "-X", "GET", "search/issues", "-f", `q=repo:${this.repo} is:issue ${q}`, "--jq", ".items[] | [.number,.node_id,.html_url,.body] | @json"]);
+    const out = await this.gh(["api", "-X", "GET", "search/issues", "-f", `q=repo:${this.repo} is:issue ${q}`, "--jq", `.items[] | select(.user.login == "${await this.me()}") | [.number,.node_id,.html_url,.body] | @json`]);
     for (const line of out.split("\n").filter(Boolean)) {
       const [number4, nodeId, url2, body2] = JSON.parse(line);
       if (body2.includes(marker(key2))) return { number: number4, nodeId, url: url2 };
@@ -28586,7 +28599,7 @@ var GhAdapter = class {
   async ensureIssue(key2, title, body2, labels = [], milestone) {
     const found = await this.findByMarker(key2);
     if (found) return found;
-    const args = ["api", `repos/${this.repo}/issues`, "-f", `title=${title}`, "-f", `body=${redact(body2).slice(0, MAX_BODY)}
+    const args = ["api", `repos/${this.repo}/issues`, "-f", `title=${redact(title)}`, "-f", `body=${redact(body2).slice(0, MAX_BODY)}
 
 ${marker(key2)}`];
     for (const l of labels) args.push("-f", `labels[]=${l}`);
@@ -28597,7 +28610,7 @@ ${marker(key2)}`];
   }
   async addCheckpoint(issue2, key2, body2) {
     const tag = marker(key2);
-    const existing = await this.gh(["api", `repos/${this.repo}/issues/${issue2.number}/comments`, "--paginate", "--jq", ".[].body"]);
+    const existing = await this.gh(["api", `repos/${this.repo}/issues/${issue2.number}/comments`, "--paginate", "--jq", `.[] | select(.user.login == "${await this.me()}") | .body`]);
     if (existing.includes(tag)) return;
     await this.gh(["api", `repos/${this.repo}/issues/${issue2.number}/comments`, "-f", `body=${redact(body2).slice(0, MAX_BODY)}
 
@@ -28625,7 +28638,7 @@ ${tag}`]);
   async openPullRequest(input2) {
     const existing = await this.gh(["pr", "list", "--repo", this.repo, "--head", input2.head, "--state", "open", "--json", "url", "--jq", '.[0].url // ""'], { cwd: input2.cwd });
     if (existing) return existing;
-    return this.gh(["pr", "create", "--repo", this.repo, "--head", input2.head, "--base", input2.base, "--title", input2.title, "--body", redact(input2.body).slice(0, MAX_BODY)], { cwd: input2.cwd });
+    return this.gh(["pr", "create", "--repo", this.repo, "--head", input2.head, "--base", input2.base, "--title", redact(input2.title), "--body", redact(input2.body).slice(0, MAX_BODY)], { cwd: input2.cwd });
   }
   async getPullRequest(url2) {
     const j = JSON.parse(await this.gh(["pr", "view", url2, "--json", "state,statusCheckRollup"]));
@@ -28771,7 +28784,7 @@ var Git = class {
     for (let i = 0; i < parts.length; i++) {
       const status2 = parts[i].slice(0, 2);
       res.push({ status: status2, path: parts[i].slice(3) });
-      if (status2[0] === "R" || status2[0] === "C") i++;
+      if (status2[0] === "R" || status2[0] === "C") res.push({ status: "D ", path: parts[++i] });
     }
     return res;
   }
@@ -29065,6 +29078,10 @@ var MIGRATIONS = [
   CREATE TRIGGER gate_result_no_delete BEFORE DELETE ON gate_result BEGIN SELECT RAISE(ABORT, 'gate results are append-only'); END;
   CREATE TRIGGER event_no_update BEFORE UPDATE ON event BEGIN SELECT RAISE(ABORT, 'audit events are append-only'); END;
   CREATE TRIGGER event_no_delete BEFORE DELETE ON event BEGIN SELECT RAISE(ABORT, 'audit events are append-only'); END;
+  `,
+  `
+  ALTER TABLE gate_result ADD COLUMN sig TEXT;
+  ALTER TABLE approval ADD COLUMN sig TEXT;
   `
 ];
 function openDb(path2) {
@@ -29111,6 +29128,21 @@ var newId = (prefix) => `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 2
 // src/state/store.ts
 init_errors3();
 init_schema();
+
+// src/state/signer.ts
+import { createHmac, randomBytes } from "node:crypto";
+import { chmodSync, existsSync as existsSync5, mkdirSync as mkdirSync3, readFileSync as readFileSync4, writeFileSync as writeFileSync2 } from "node:fs";
+import { homedir } from "node:os";
+import { dirname as dirname3, join as join4 } from "node:path";
+function fileSigner(keyPath = process.env.PROOFLOOP_KEY_FILE ?? join4(process.env.PROOFLOOP_HOME ?? join4(homedir(), ".proofloop"), "ledger.key")) {
+  if (!existsSync5(keyPath)) {
+    mkdirSync3(dirname3(keyPath), { recursive: true, mode: 448 });
+    writeFileSync2(keyPath, randomBytes(32).toString("hex"), { mode: 384 });
+    chmodSync(keyPath, 384);
+  }
+  const key2 = readFileSync4(keyPath, "utf8").trim();
+  return { sign: (parts) => createHmac("sha256", key2).update(JSON.stringify(parts)).digest("hex") };
+}
 
 // src/state/machine.ts
 var TERMINAL_STATES = ["COMPLETE", "CANCELLED"];
@@ -29201,12 +29233,20 @@ var toRun = (r) => ({
   updatedAtUtc: r.updated_at_utc
 });
 var Store = class {
-  constructor(db, clock = systemClock) {
+  constructor(db, clock = systemClock, signer = fileSigner()) {
     this.db = db;
     this.clock = clock;
+    this.signer = signer;
   }
   db;
   clock;
+  signer;
+  gateSig(r) {
+    return this.signer.sign(["gate", r.id, r.taskRunId, r.gateId, r.state, r.commitSha, r.seq, r.exitCode, r.evidenceIds.join(",")]);
+  }
+  approvalSig(id3, run, scope, planHash, by, decision) {
+    return this.signer.sign(["approval", id3, run, scope, planHash, by, decision]);
+  }
   all(sql, ...p) {
     return this.db.prepare(sql).all(...p);
   }
@@ -29304,9 +29344,10 @@ var Store = class {
   }
   guardContext(id3) {
     const r = this.getRun(id3);
+    const signedApproval = this.all("SELECT * FROM approval WHERE task_run_id = ? AND scope = 'plan' AND decision = 'approve'", id3).some((a) => a.plan_hash === r.currentPlanHash && this.validApproval(a));
     return {
       currentPlanHash: r.currentPlanHash,
-      approvedPlanHash: r.approvedPlanHash,
+      approvedPlanHash: signedApproval ? r.currentPlanHash : null,
       headSha: r.headSha,
       requiredGates: this.requiredGateSnapshots(id3),
       repairCount: r.repairCount,
@@ -29368,12 +29409,13 @@ var Store = class {
         if (a.planHash !== run.currentPlanHash) throw new PlError("PL_PLAN_003", "approval references a stale plan hash; review the current plan");
         if (a.decision === "approve") this.patch(id3, { approved_plan_hash: a.planHash });
       }
-      this.run("INSERT INTO approval (id, task_run_id, scope, plan_hash, approved_by, decision, comment, created_at_utc) VALUES (?,?,?,?,?,?,?,?)", newId("apr"), id3, a.scope, a.planHash, a.approvedBy, a.decision, a.comment ?? null, this.clock.nowIso());
+      const aid = newId("apr");
+      this.run("INSERT INTO approval (id, task_run_id, scope, plan_hash, approved_by, decision, comment, created_at_utc, sig) VALUES (?,?,?,?,?,?,?,?,?)", aid, id3, a.scope, a.planHash, a.approvedBy, a.decision, a.comment ?? null, this.clock.nowIso(), this.approvalSig(aid, id3, a.scope, a.planHash, a.approvedBy, a.decision));
       this.audit(id3, `approval.${a.decision}`, a.approvedBy, { scope: a.scope, planHash: a.planHash });
     });
   }
   hasGatedApproval(id3, scope) {
-    return Boolean(this.one("SELECT 1 AS x FROM approval WHERE task_run_id = ? AND scope = ? AND decision = 'approve'", id3, scope));
+    return this.all("SELECT * FROM approval WHERE task_run_id = ? AND scope = ? AND decision = 'approve'", id3, scope).some((r) => this.validApproval(r));
   }
   approvals(id3) {
     return this.all("SELECT * FROM approval WHERE task_run_id = ? ORDER BY created_at_utc, id", id3);
@@ -29419,9 +29461,10 @@ var Store = class {
     return inTransaction(this.db, () => {
       const seq = Number(this.one("SELECT COALESCE(MAX(seq),0) AS m FROM gate_result WHERE task_run_id = ?", g.taskRunId).m) + 1;
       const id3 = newId("gate");
+      const sig = this.gateSig({ id: id3, taskRunId: g.taskRunId, gateId: g.gateId, state: g.state, commitSha: g.commitSha, seq, exitCode: g.exitCode, evidenceIds: g.evidenceIds });
       this.run(
-        `INSERT INTO gate_result (id, task_run_id, gate_id, state, required, command_or_assertion, exit_code, evidence_ids, commit_sha, started_at_utc, finished_at_utc, failure_category, fingerprint, seq)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO gate_result (id, task_run_id, gate_id, state, required, command_or_assertion, exit_code, evidence_ids, commit_sha, started_at_utc, finished_at_utc, failure_category, fingerprint, seq, sig)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         id3,
         g.taskRunId,
         g.gateId,
@@ -29435,14 +29478,15 @@ var Store = class {
         g.finishedAtUtc,
         g.failureCategory ?? null,
         g.fingerprint ?? null,
-        seq
+        seq,
+        sig
       );
       return id3;
     });
   }
   gateHistory(id3, gateId) {
     const rows = gateId ? this.all("SELECT * FROM gate_result WHERE task_run_id = ? AND gate_id = ? ORDER BY seq", id3, gateId) : this.all("SELECT * FROM gate_result WHERE task_run_id = ? ORDER BY seq", id3);
-    return rows.map((r) => ({
+    return rows.filter((r) => this.validGate(r)).map((r) => ({
       id: r.id,
       seq: r.seq,
       taskRunId: r.task_run_id,
@@ -29458,6 +29502,20 @@ var Store = class {
       failureCategory: r.failure_category ?? void 0,
       fingerprint: r.fingerprint ?? void 0
     }));
+  }
+  validGate(r) {
+    const evidenceIds = JSON.parse(r.evidence_ids);
+    return r.sig === this.gateSig({ id: r.id, taskRunId: r.task_run_id, gateId: r.gate_id, state: r.state, commitSha: r.commit_sha, seq: r.seq, exitCode: r.exit_code ?? null, evidenceIds });
+  }
+  /** Gate rows whose signature does not verify: evidence of tampering with the database. */
+  forgedGateRows(id3) {
+    return this.all("SELECT * FROM gate_result WHERE task_run_id = ?", id3).filter((r) => !this.validGate(r)).length;
+  }
+  forgedApprovalRows(id3) {
+    return this.all("SELECT * FROM approval WHERE task_run_id = ?", id3).filter((r) => !this.validApproval(r)).length;
+  }
+  validApproval(r) {
+    return r.sig === this.approvalSig(r.id, r.task_run_id, r.scope, r.plan_hash ?? null, r.approved_by, r.decision);
   }
   requiredGateSnapshots(id3) {
     return this.getGatePlan(id3).filter((g) => g.required).map((g) => {
@@ -29575,8 +29633,8 @@ var Store = class {
 };
 
 // src/engine/bug.ts
-import { existsSync as existsSync6 } from "node:fs";
-import { join as join7 } from "node:path";
+import { existsSync as existsSync7 } from "node:fs";
+import { join as join8 } from "node:path";
 
 // src/policy/command.ts
 init_errors3();
@@ -29609,12 +29667,12 @@ function tokenize(line) {
 }
 var RULES = [
   { re: /(^|\s)sudo(\s|$)/, cls: "critical", why: "privilege escalation" },
-  { re: /\brm\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r|--recursive)/i, cls: "destructive", why: "recursive delete" },
-  { re: /\bgit\s+push\b.*(--force|-f\b|--delete|\+)/, cls: "critical", why: "force/destructive push" },
-  { re: /\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f|checkout\s+--\s|branch\s+-D)/, cls: "destructive", why: "discards work" },
-  { re: /\b(terraform|tofu)\s+(apply|destroy)\b/, cls: "critical", why: "infrastructure change" },
-  { re: /\bkubectl\s+(delete|apply|replace|patch|scale|rollout)\b/, cls: "critical", why: "cluster mutation" },
-  { re: /\bhelm\s+(install|upgrade|uninstall|rollback)\b/, cls: "critical", why: "cluster mutation" },
+  { re: /\brm\b(?=.*\s-[a-z]*r)(?=.*\s-[a-z]*f)|\brm\b.*--recursive/i, cls: "destructive", why: "recursive delete" },
+  { re: /\bgit\b.*\bpush\b.*(--force|-f\b|--delete|\s\+)/, cls: "critical", why: "force/destructive push" },
+  { re: /\bgit\b.*\b(reset\s+--hard|clean\s+-[a-z]*f|checkout\s+--\s|branch\s+-D)/, cls: "destructive", why: "discards work" },
+  { re: /\b(terraform|tofu)\b.*\b(apply|destroy)\b/, cls: "critical", why: "infrastructure change" },
+  { re: /\bkubectl\b.*\b(delete|apply|replace|patch|scale|rollout)\b/, cls: "critical", why: "cluster mutation" },
+  { re: /\bhelm\b.*\b(install|upgrade|uninstall|rollback)\b/, cls: "critical", why: "cluster mutation" },
   { re: /\b(docker|podman)\s+push\b/, cls: "critical", why: "publishes an image" },
   { re: /\b(npm|pnpm|yarn)\s+publish\b|\bcargo\s+publish\b|\btwine\s+upload\b/, cls: "critical", why: "publishes a package" },
   { re: /\bgh\s+(release\s+(create|delete)|repo\s+(delete|edit)|api\b.*(-X|--method)\s*(DELETE|PUT|PATCH))/i, cls: "critical", why: "GitHub destructive/admin call" },
@@ -29643,16 +29701,19 @@ function evaluateCommand(line, policy) {
   if (policy.allowed.some((p) => argvPrefixMatches(argv, p))) return { verdict: "allow", cls: "allowed", reason: "allowlisted", argv };
   return { verdict: "deny", cls: "unlisted", reason: `"${argv[0]}" is not on the command allowlist; add it to .proofloop/config.json allowedCommands`, argv };
 }
+function commandSegments(line) {
+  return line.split(/&&|\|\||[;|&\n`]|\$\(|\)/).map((x) => x.trim()).filter(Boolean);
+}
 
 // src/engine/bug.ts
 init_hash();
 
 // src/engine/deps.ts
-import { join as join6 } from "node:path";
+import { join as join7 } from "node:path";
 
 // src/gates/runner.ts
-import { cpSync, mkdirSync as mkdirSync3, writeFileSync as writeFileSync2 } from "node:fs";
-import { basename, join as join5 } from "node:path";
+import { cpSync, mkdirSync as mkdirSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { basename, join as join6 } from "node:path";
 init_hash();
 
 // src/browser/app.ts
@@ -29710,8 +29771,8 @@ async function startApp(o) {
 
 // src/browser/playwright.ts
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync5, readFileSync as readFileSync4, readdirSync as readdirSync3, statSync } from "node:fs";
-import { join as join4, relative } from "node:path";
+import { existsSync as existsSync6, readFileSync as readFileSync5, readdirSync as readdirSync3, statSync } from "node:fs";
+import { join as join5, relative } from "node:path";
 var AC_TAG = /@(AC-[A-Za-z0-9_.-]+)/g;
 var norm = (s) => s === "expected" ? "passed" : s === "unexpected" ? "failed" : s === "flaky" ? "flaky" : "skipped";
 function parsePlaywrightJson(raw) {
@@ -29735,13 +29796,13 @@ function mapAcceptance(acIds, outcomes) {
     return { ac, tests: hits.map((h) => h.title), executed: hits.filter((h) => h.status !== "skipped").length, failed: hits.filter((h) => h.status === "failed" || h.status === "flaky").length };
   });
 }
-var walkFiles = (dir) => readdirSync3(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walkFiles(join4(dir, e.name)) : [join4(dir, e.name)]);
+var walkFiles = (dir) => readdirSync3(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walkFiles(join5(dir, e.name)) : [join5(dir, e.name)]);
 function hashDir(dir) {
-  if (!existsSync5(dir) || !statSync(dir).isDirectory()) return null;
+  if (!existsSync6(dir) || !statSync(dir).isDirectory()) return null;
   const h = createHash2("sha256");
   for (const f of walkFiles(dir).sort()) {
     h.update(relative(dir, f));
-    h.update(readFileSync4(f));
+    h.update(readFileSync5(f));
   }
   return h.digest("hex");
 }
@@ -29754,11 +29815,11 @@ function failureFingerprint(output2) {
   return sha256(norm2).slice(0, 16);
 }
 function writeLog(ctx, gateId, content) {
-  const dir = join5(ctx.artifactDir, ctx.runId);
-  mkdirSync3(dir, { recursive: true });
-  const uri = join5(dir, `${gateId}-${ctx.commitSha.slice(0, 8)}-${ctx.store.gateHistory(ctx.runId, gateId).length + 1}.log`);
+  const dir = join6(ctx.artifactDir, ctx.runId);
+  mkdirSync4(dir, { recursive: true });
+  const uri = join6(dir, `${gateId}-${ctx.commitSha.slice(0, 8)}-${ctx.store.gateHistory(ctx.runId, gateId).length + 1}.log`);
   const redacted = redact(content);
-  writeFileSync2(uri, redacted);
+  writeFileSync3(uri, redacted);
   return { uri, checksum: sha256(redacted) };
 }
 function record2(ctx, entry, r) {
@@ -29768,7 +29829,7 @@ function record2(ctx, entry, r) {
 ${r.output}`);
   const ids = [
     ctx.store.addEvidence({ taskRunId: ctx.runId, gateId: entry.gateId, kind: "gate-log", uri: log.uri, checksum: log.checksum, commitSha: ctx.commitSha, environment: ctx.environment, summary: redact(r.summary).slice(0, 300), redactionStatus: "redacted" }),
-    ...(r.extra ?? []).map((e) => ctx.store.addEvidence({ taskRunId: ctx.runId, gateId: entry.gateId, kind: e.kind, uri: e.uri, checksum: e.checksum, commitSha: ctx.commitSha, environment: ctx.environment, summary: r.summary.slice(0, 300), redactionStatus: "redacted" }))
+    ...(r.extra ?? []).map((e) => ctx.store.addEvidence({ taskRunId: ctx.runId, gateId: entry.gateId, kind: e.kind, uri: e.uri, checksum: e.checksum, commitSha: ctx.commitSha, environment: ctx.environment, summary: r.summary.slice(0, 300), redactionStatus: e.kind === "browser-artifacts" ? "binary-unredacted" : "redacted" }))
   ];
   const id3 = ctx.store.recordGateResult({
     taskRunId: ctx.runId,
@@ -29836,6 +29897,9 @@ ${run.stderr}` : ""}${run.truncated ? "\n[output truncated]" : ""}`;
   } finally {
     await app?.stop();
   }
+  const after = await ctx.git.head(ctx.cwd);
+  if (after !== ctx.commitSha || await ctx.git.hasTrackedChanges(ctx.cwd))
+    return blocked2(ctx, entry, started, "gate-mutated-repo", "the gate command changed HEAD or tracked files; its result no longer describes the candidate commit");
   return finish(ctx, entry, attempts, started);
 }
 function judge(a, entry, ctx) {
@@ -29854,9 +29918,9 @@ function finish(ctx, entry, attempts, started) {
   const output2 = judged.map(({ a, j }) => `${a.persona ? `=== persona ${a.persona}: ${j.state} ===
 ` : ""}${a.output}`).join("\n");
   const extra = (ctx.artifactDirs ?? []).flatMap((d) => {
-    const src = join5(ctx.cwd, d);
+    const src = join6(ctx.cwd, d);
     if (!hashDir(src)) return [];
-    const snap = join5(ctx.artifactDir, ctx.runId, `${entry.gateId}-${ctx.commitSha.slice(0, 8)}-${ctx.store.gateHistory(ctx.runId, entry.gateId).length + 1}-${basename(d)}`);
+    const snap = join6(ctx.artifactDir, ctx.runId, `${entry.gateId}-${ctx.commitSha.slice(0, 8)}-${ctx.store.gateHistory(ctx.runId, entry.gateId).length + 1}-${basename(d)}`);
     cpSync(src, snap, { recursive: true });
     return [{ kind: "browser-artifacts", uri: snap, checksum: hashDir(snap) }];
   });
@@ -29892,13 +29956,13 @@ function gateReport(store, runId) {
 init_errors3();
 
 // src/shared/log.ts
-import { appendFileSync, mkdirSync as mkdirSync4 } from "node:fs";
-import { dirname as dirname3 } from "node:path";
+import { appendFileSync, mkdirSync as mkdirSync5 } from "node:fs";
+import { dirname as dirname4 } from "node:path";
 var FileLogger = class {
   constructor(path2, clock = systemClock) {
     this.path = path2;
     this.clock = clock;
-    mkdirSync4(dirname3(path2), { recursive: true });
+    mkdirSync5(dirname4(path2), { recursive: true });
   }
   path;
   clock;
@@ -29914,8 +29978,8 @@ var nullLogger = { log: () => void 0 };
 var clockOf = (d) => d.clock ?? systemClock;
 var loggerOf = (d) => d.logger ?? nullLogger;
 var environmentOf = (d) => environmentLabel(d.config.environment);
-var artifactDir = (d) => join6(stateDir(d.root), "artifacts");
-var worktreeRoot = (d, runId) => join6(stateDir(d.root), "worktrees", runId);
+var artifactDir = (d) => join7(stateDir(d.root), "artifacts");
+var worktreeRoot = (d, runId) => join7(stateDir(d.root), "worktrees", runId);
 var COMMIT_TYPE = { feature: "feat", bug: "fix", performance: "perf", refactor: "refactor", security: "security", troubleshooting: "fix", "idea-to-product": "docs" };
 var commitType = (protocolId) => COMMIT_TYPE[protocolId] ?? "chore";
 function policyFor(d, runId) {
@@ -29954,7 +30018,7 @@ function gateCtx(d, runId, cwd, commitSha) {
 }
 var totalCostUsd = (d, runId) => d.store.events(runId, "agent.cost").reduce((n, e) => n + Number(e.data.usd ?? 0), 0);
 function implementerTools(d, runId) {
-  const cmds = policyFor(d, runId).allowed.flatMap((p) => [`Bash(${p.join(" ")})`, `Bash(${p.join(" ")} *)`]);
+  const cmds = policyFor(d, runId).allowed.map((p) => `Bash(${p.join(" ")})`);
   return [...ROLE_TOOLS.implementer, ...cmds];
 }
 var RATE = /rate.?limit|\b429\b|overloaded|quota/i;
@@ -29974,7 +30038,7 @@ var REPRODUCTION_GATE = { gateId: "reproduction-proven", kind: "custom", require
 async function recordReproduction(d, run, plan, cwd) {
   const rt = plan.regressionTest;
   if (!rt || d.store.evidenceFor(run.id).some((e) => e.kind === "reproduction")) return;
-  if (!existsSync6(join7(cwd, rt.file))) return;
+  if (!existsSync7(join8(cwd, rt.file))) return;
   const decision = evaluateCommand(rt.command, policyFor(d, run.id));
   if (decision.verdict !== "allow") {
     d.store.audit(run.id, "policy.denied", "engine", { command: rt.command, class: decision.cls, reason: decision.reason, during: "reproduction" });
@@ -29987,10 +30051,10 @@ async function recordReproduction(d, run, plan, cwd) {
   const log = redact(`$ ${rt.command}
 ${r.stdout}
 ${r.stderr}`);
-  const uri = join7(d.root, ".proofloop", "artifacts", run.id, `reproduction-${head.slice(0, 8)}.log`);
-  const { mkdirSync: mkdirSync11, writeFileSync: writeFileSync10 } = await import("node:fs");
-  mkdirSync11(join7(uri, ".."), { recursive: true });
-  writeFileSync10(uri, log);
+  const uri = join8(d.root, ".proofloop", "artifacts", run.id, `reproduction-${head.slice(0, 8)}.log`);
+  const { mkdirSync: mkdirSync12, writeFileSync: writeFileSync11 } = await import("node:fs");
+  mkdirSync12(join8(uri, ".."), { recursive: true });
+  writeFileSync11(uri, log);
   d.store.addEvidence({ taskRunId: run.id, gateId: "reproduction-proven", kind: "reproduction", uri, checksum: sha256(log), commitSha: head, environment: environmentOf(d), summary: `${state}: regression test ${state === "FAIL" ? "fails before the fix" : "already passes before the fix"}`, redactionStatus: "redacted" });
 }
 async function reproductionProven(ctx) {
@@ -30314,8 +30378,8 @@ async function assumptionsVisibleGate(ctx) {
 var blueprintBuiltins = { "blueprint-valid": blueprintValid, "assumptions-visible": assumptionsVisibleGate };
 
 // src/browser/traceability.ts
-import { existsSync as existsSync7, readFileSync as readFileSync5 } from "node:fs";
-import { join as join8 } from "node:path";
+import { existsSync as existsSync8, readFileSync as readFileSync6 } from "node:fs";
+import { join as join9 } from "node:path";
 var FILE_REF = /^[\w@./-]+\.[A-Za-z0-9]+(?::\d+)?$/;
 async function acTraceability(ctx) {
   const plan = ctx.store.getPlanBody(ctx.runId);
@@ -30328,7 +30392,7 @@ async function acTraceability(ctx) {
       continue;
     }
     for (const ref of ac.tests) {
-      if (FILE_REF.test(ref) && !existsSync7(join8(ctx.cwd, ref.replace(/:\d+$/, "")))) problems.push(`${ac.id}: test file "${ref}" does not exist at the candidate commit`);
+      if (FILE_REF.test(ref) && !existsSync8(join9(ctx.cwd, ref.replace(/:\d+$/, "")))) problems.push(`${ac.id}: test file "${ref}" does not exist at the candidate commit`);
       else if (!FILE_REF.test(ref)) notes.push(`${ac.id}: selector "${ref}" is not file-checked`);
     }
   }
@@ -30340,9 +30404,9 @@ async function acTraceability(ctx) {
 function resultsOutcome(ctx, acIds) {
   const file2 = ctx.resultsFile;
   if (!file2) return { state: "PASS", summary: "" };
-  const path2 = join8(ctx.cwd, file2);
-  if (!existsSync7(path2)) return { state: "BLOCKED", category: "no-results", summary: `configured browser results ${file2} were not produced` };
-  const rows = mapAcceptance(acIds, parsePlaywrightJson(readFileSync5(path2, "utf8")));
+  const path2 = join9(ctx.cwd, file2);
+  if (!existsSync8(path2)) return { state: "BLOCKED", category: "no-results", summary: `configured browser results ${file2} were not produced` };
+  const rows = mapAcceptance(acIds, parsePlaywrightJson(readFileSync6(path2, "utf8")));
   const failed = rows.filter((r) => r.failed > 0).map((r) => r.ac);
   if (failed.length) return { state: "FAIL", category: "assertion-failed", summary: `tagged tests failed for ${failed.join(", ")}` };
   const unexecuted = rows.filter((r) => r.executed === 0).map((r) => r.ac);
@@ -30350,8 +30414,8 @@ function resultsOutcome(ctx, acIds) {
 }
 
 // src/gates/artifacts.ts
-import { mkdirSync as mkdirSync5, readFileSync as readFileSync6, writeFileSync as writeFileSync3 } from "node:fs";
-import { join as join9 } from "node:path";
+import { mkdirSync as mkdirSync6, readFileSync as readFileSync7, writeFileSync as writeFileSync4 } from "node:fs";
+import { join as join10 } from "node:path";
 
 // src/perf/report.ts
 init_zod();
@@ -30419,11 +30483,11 @@ init_hash();
 var NAME = /^[a-z][a-z0-9-]{1,50}$/;
 function addArtifact(store, runId, a) {
   if (!NAME.test(a.name)) throw new PlError("PL_ARTIFACT_001", "artifact names are lowercase kebab-case");
-  const dir = join9(a.artifactDir, runId);
-  mkdirSync5(dir, { recursive: true });
+  const dir = join10(a.artifactDir, runId);
+  mkdirSync6(dir, { recursive: true });
   const content = redact(a.content);
-  const uri = join9(dir, `${a.name}-${store.evidenceFor(runId).length + 1}.txt`);
-  writeFileSync3(uri, content);
+  const uri = join10(dir, `${a.name}-${store.evidenceFor(runId).length + 1}.txt`);
+  writeFileSync4(uri, content);
   return store.addEvidence({ taskRunId: runId, kind: a.kind ?? `artifact:${a.name}`, uri, checksum: sha256(content), commitSha: a.commitSha, environment: a.environment ?? "recorded", summary: (a.summary ?? a.name).slice(0, 300), redactionStatus: "redacted" });
 }
 var DERIVED = {
@@ -30475,7 +30539,7 @@ async function migrationReadiness(ctx) {
 function loadMeasurement(store, runId, kind) {
   const ev = store.evidenceFor(runId).filter((e) => e.kind === kind).at(-1);
   if (!ev) return void 0;
-  const parsed = measurementSchema.safeParse(JSON.parse(readFileSync6(String(ev.uri), "utf8")));
+  const parsed = measurementSchema.safeParse(JSON.parse(readFileSync7(String(ev.uri), "utf8")));
   return parsed.success ? parsed.data : void 0;
 }
 async function baselineRecorded(ctx) {
@@ -30506,8 +30570,8 @@ async function beforeAfter(ctx) {
 }
 
 // src/engine/engine.ts
-import { basename as basename3, join as join12 } from "node:path";
-import { existsSync as existsSync11 } from "node:fs";
+import { basename as basename3, join as join13 } from "node:path";
+import { existsSync as existsSync12 } from "node:fs";
 
 // src/gates/plan.ts
 init_schema();
@@ -30538,11 +30602,13 @@ init_hash();
 init_errors3();
 
 // src/engine/report.ts
-import { existsSync as existsSync8, readFileSync as readFileSync7, statSync as statSync2 } from "node:fs";
+import { existsSync as existsSync9, readFileSync as readFileSync8, statSync as statSync2 } from "node:fs";
 init_hash();
 function verifyEvidenceIntegrity(store, runId) {
   const run = store.getRun(runId);
   const problems = [];
+  const forged = store.forgedGateRows(runId) + store.forgedApprovalRows(runId);
+  if (forged > 0) problems.push({ evidenceId: "ledger", problem: `${forged} ledger row(s) failed signature verification: the state database was modified outside ProofLoop` });
   const byId = new Map(store.evidenceFor(runId).map((e) => [e.id, e]));
   for (const g of gateReport(store, runId).gates.filter((x) => x.required)) {
     if (g.evidence.length === 0) problems.push({ evidenceId: g.gateId, problem: `required gate ${g.gateId} has no evidence` });
@@ -30554,8 +30620,8 @@ function verifyEvidenceIntegrity(store, runId) {
       }
       if (e.commit_sha !== run.headSha) problems.push({ evidenceId: id3, problem: `evidence is for ${String(e.commit_sha).slice(0, 8)}, not the candidate ${run.headSha?.slice(0, 8)}` });
       const uri = String(e.uri);
-      if (!existsSync8(uri)) problems.push({ evidenceId: id3, problem: `artifact file missing: ${uri}` });
-      else if ((statSync2(uri).isDirectory() ? hashDir(uri) : sha256(readFileSync7(uri))) !== e.checksum) problems.push({ evidenceId: id3, problem: `checksum mismatch for ${uri}` });
+      if (!existsSync9(uri)) problems.push({ evidenceId: id3, problem: `artifact file missing: ${uri}` });
+      else if ((statSync2(uri).isDirectory() ? hashDir(uri) : sha256(readFileSync8(uri))) !== e.checksum) problems.push({ evidenceId: id3, problem: `checksum mismatch for ${uri}` });
     }
   }
   return problems;
@@ -30655,7 +30721,7 @@ Roadmap for this product. Milestones are linked as sub-issues.`, ["roadmap"]);
 }
 
 // src/engine/scheduler.ts
-import { join as join10 } from "node:path";
+import { join as join11 } from "node:path";
 
 // src/shared/proc.ts
 function isPidAlive(pid) {
@@ -30864,7 +30930,7 @@ async function runSequential(d, run, plan, node2) {
 }
 async function runInWorktree(d, run, plan, node2) {
   const branch = `${run.activeBranch}--${node2.id}`;
-  const dir = join10(worktreeRoot(d, run.id), node2.id);
+  const dir = join11(worktreeRoot(d, run.id), node2.id);
   const wt = await d.git.createWorktree(run.worktreePath, branch, run.activeBranch, dir);
   d.store.setNodeState(run.id, node2.id, "RUNNING");
   const out = await withLease(d, run.id, node2.id, { worktreePath: wt.path, branch }, () => runTask(d, run, plan, node2, wt.path));
@@ -30932,13 +30998,13 @@ async function parallelStep(d, run, plan, batch) {
 }
 
 // src/engine/steps-plan.ts
-import { existsSync as existsSync10, readFileSync as readFileSync9, appendFileSync as appendFileSync2 } from "node:fs";
-import { join as join11 } from "node:path";
+import { existsSync as existsSync11, readFileSync as readFileSync10, appendFileSync as appendFileSync2 } from "node:fs";
+import { join as join12 } from "node:path";
 init_schema();
 init_workflow();
 
 // src/repo/context.ts
-import { readFileSync as readFileSync8, statSync as statSync3 } from "node:fs";
+import { readFileSync as readFileSync9, statSync as statSync3 } from "node:fs";
 init_errors3();
 init_paths();
 var CONTEXT_LIMITS = { files: 200, matches: 50, lines: 200, lineChars: 300, bytes: 64 * 1024, history: 20 };
@@ -30976,7 +31042,7 @@ var RepoContext = class {
     const ok2 = checkPath(this.root, path2, "read");
     if (!ok2.ok) throw new PlError("PL_CONTEXT_002", ok2.reason);
     if (statSync3(ok2.resolved).size > 5 * 1024 * 1024) throw new PlError("PL_CONTEXT_003", `${path2} is too large to read; use searchText`);
-    const lines = readFileSync8(ok2.resolved, "utf8").split("\n");
+    const lines = readFileSync9(ok2.resolved, "utf8").split("\n");
     const from = Math.max(1, start);
     const to = Math.min(end, from + CONTEXT_LIMITS.lines - 1, lines.length);
     let text2 = lines.slice(from - 1, to).map((l) => l.slice(0, CONTEXT_LIMITS.lineChars)).join("\n");
@@ -31089,9 +31155,9 @@ function syncGatePlan(d, runId) {
   return entries;
 }
 function excludeStateDir(root, extraDirs = []) {
-  const file2 = join11(root, ".git", "info", "exclude");
-  if (!existsSync10(join11(root, ".git"))) return;
-  const text2 = existsSync10(file2) ? readFileSync9(file2, "utf8") : "";
+  const file2 = join12(root, ".git", "info", "exclude");
+  if (!existsSync11(join12(root, ".git"))) return;
+  const text2 = existsSync11(file2) ? readFileSync10(file2, "utf8") : "";
   const wanted = [".proofloop/", "test-results/", "playwright-report/", "blob-report/", ...extraDirs.map((x) => `${x.replace(/\/$/, "")}/`)];
   const missing = wanted.filter((w) => !text2.split("\n").includes(w));
   if (missing.length) appendFileSync2(file2, `${text2.endsWith("\n") || text2 === "" ? "" : "\n"}${missing.join("\n")}
@@ -31099,11 +31165,11 @@ function excludeStateDir(root, extraDirs = []) {
 }
 async function stepReady(d, runId) {
   const run = d.store.getRun(runId);
-  if (!run.worktreePath || !existsSync10(run.worktreePath)) {
+  if (!run.worktreePath || !existsSync11(run.worktreePath)) {
     excludeStateDir(d.root, d.config.app.artifactDirs);
     const branch = run.activeBranch ?? branchName(run.protocolId, run.intent, run.id);
     const base = run.baseCommit ?? await d.git.head(d.root);
-    const wt = await d.git.createWorktree(d.root, branch, base, join11(worktreeRoot(d, runId), "integration"));
+    const wt = await d.git.createWorktree(d.root, branch, base, join12(worktreeRoot(d, runId), "integration"));
     d.store.setFields(runId, { baseCommit: base, activeBranch: branch, worktreePath: wt.path, headSha: wt.head });
   }
   if (d.registry.get(run.protocolId).mode === "idea-to-product") await writeBlueprintDocs(d, runId);
@@ -31114,9 +31180,9 @@ async function writeBlueprintDocs(d, runId) {
   const run = d.store.getRun(runId);
   const needs = JSON.parse(d.store.getKey(`needs-confirmation:${runId}`) ?? "[]");
   for (const f of blueprintDocs(getBlueprint(d.store, runId), run.currentPlanHash, needs)) {
-    const { mkdirSync: mkdirSync11, writeFileSync: writeFileSync10 } = await import("node:fs");
-    mkdirSync11(join11(run.worktreePath, f.path, ".."), { recursive: true });
-    writeFileSync10(join11(run.worktreePath, f.path), f.content);
+    const { mkdirSync: mkdirSync12, writeFileSync: writeFileSync11 } = await import("node:fs");
+    mkdirSync12(join12(run.worktreePath, f.path, ".."), { recursive: true });
+    writeFileSync11(join12(run.worktreePath, f.path), f.content);
   }
   const sha = await d.git.commitAll(run.worktreePath, "docs: add product blueprint, roadmap and decision records");
   if (sha) d.store.setFields(runId, { headSha: sha });
@@ -31136,6 +31202,11 @@ async function stepDeliver(d, runId) {
   const problems = verifyEvidenceIntegrity(d.store, runId);
   if (problems.length) {
     await block(d, runId, `evidence integrity check failed: ${problems.map((p) => p.problem).join("; ")}`);
+    return "delivered";
+  }
+  const tip = await d.git.head(run.worktreePath);
+  if (tip !== run.headSha || await d.git.hasTrackedChanges(run.worktreePath)) {
+    await block(d, runId, `worktree tip ${tip.slice(0, 8)} differs from the verified commit ${run.headSha?.slice(0, 8)}; refusing to deliver unverified content`);
     return "delivered";
   }
   const step = d.store.beginStep(runId, "deliver");
@@ -31191,7 +31262,7 @@ async function stepPullRequest(d, runId) {
 }
 
 // src/engine/steps-verify.ts
-import { readFileSync as readFileSync10 } from "node:fs";
+import { readFileSync as readFileSync11 } from "node:fs";
 init_workflow();
 init_risk();
 init_schema();
@@ -31232,7 +31303,7 @@ function logTail(d, r) {
   const ev = d.store.evidenceFor(r.taskRunId).find((e) => r.evidenceIds.includes(e.id) && e.kind === "gate-log");
   if (!ev) return "(no log)";
   try {
-    return readFileSync10(String(ev.uri), "utf8").split("\n").slice(-LOG_TAIL_LINES).join("\n");
+    return readFileSync11(String(ev.uri), "utf8").split("\n").slice(-LOG_TAIL_LINES).join("\n");
   } catch {
     return "(log unreadable)";
   }
@@ -31543,7 +31614,7 @@ Run: \`${run.id}\``, [protocol.id === "bug" ? "bug" : "feature"]);
     const { d } = this;
     const run = d.store.getRun(runId);
     if (!run.worktreePath) return true;
-    if (!existsSync11(run.worktreePath)) {
+    if (!existsSync12(run.worktreePath)) {
       d.store.audit(runId, "resume.worktree-missing", "engine", { path: run.worktreePath });
       d.store.setFields(runId, { worktreePath: "" });
       if (run.state !== "BLOCKED") await block(d, runId, `worktree ${run.worktreePath} is missing; its branch is intact. Resume with --retry to recreate it`);
@@ -31602,7 +31673,7 @@ Run: \`${run.id}\``, [protocol.id === "bug" ? "bug" : "feature"]);
   }
   worktreeOf(runId) {
     const p = this.d.store.getRun(runId).worktreePath;
-    return p ? join12(p) : null;
+    return p ? join13(p) : null;
   }
 };
 
@@ -31637,16 +31708,16 @@ init_workflow();
 init_errors3();
 
 // src/evals/composer-bench.ts
-import { mkdirSync as mkdirSync6, mkdtempSync as mkdtempSync2, writeFileSync as writeFileSync5 } from "node:fs";
+import { mkdirSync as mkdirSync7, mkdtempSync as mkdtempSync2, writeFileSync as writeFileSync6 } from "node:fs";
 import { tmpdir as tmpdir2 } from "node:os";
-import { dirname as dirname5, join as join15 } from "node:path";
+import { dirname as dirname6, join as join16 } from "node:path";
 
 // src/composer/local.ts
 init_zod();
 import { spawn as spawn2 } from "node:child_process";
-import { chmodSync, mkdtempSync, realpathSync as realpathSync2, rmSync, writeFileSync as writeFileSync4 } from "node:fs";
+import { chmodSync as chmodSync2, mkdtempSync, realpathSync as realpathSync2, rmSync, writeFileSync as writeFileSync5 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join as join14 } from "node:path";
+import { join as join15 } from "node:path";
 
 // src/composer/runner-source.ts
 var RUNNER_SOURCE = String.raw`
@@ -31690,8 +31761,8 @@ rl.on('line', async (line) => {
 
 // src/composer/tools.ts
 init_zod();
-import { readFileSync as readFileSync11, readdirSync as readdirSync4, existsSync as existsSync12 } from "node:fs";
-import { join as join13 } from "node:path";
+import { readFileSync as readFileSync12, readdirSync as readdirSync4, existsSync as existsSync13 } from "node:fs";
+import { join as join14 } from "node:path";
 var READ = { mode: "read", timeoutMs: 1e4, maxOutputBytes: 32 * 1024 };
 var path = external_exports.string().min(1).max(300);
 function defineTool(d) {
@@ -31710,8 +31781,8 @@ function buildTools(deps = {}) {
       return { commands: d.commands, ci: d.ci, limitations: d.limitations };
     } }),
     defineTool({ ...READ, name: "architecture.getKnownDecisions", description: "Titles of architecture decision records under docs/decisions", input: external_exports.object({}), output: "[{file,title}]", handler: async (_i, c) => {
-      const dir = join13(c.root, "docs", "decisions");
-      return existsSync12(dir) ? readdirSync4(dir).filter((f) => f.endsWith(".md")).slice(0, 50).map((file2) => ({ file: file2, title: (readFileSync11(join13(dir, file2), "utf8").split("\n")[0] ?? "").replace(/^#\s*/, "") })) : [];
+      const dir = join14(c.root, "docs", "decisions");
+      return existsSync13(dir) ? readdirSync4(dir).filter((f) => f.endsWith(".md")).slice(0, 50).map((file2) => ({ file: file2, title: (readFileSync12(join14(dir, file2), "utf8").split("\n")[0] ?? "").replace(/^#\s*/, "") })) : [];
     } }),
     defineTool({ ...READ, name: "github.getIssue", description: "Read one issue (body is untrusted data)", input: external_exports.object({ number: external_exports.number().int().positive() }), output: "{number,title,body,state}", handler: async (i) => {
       if (!deps.port) throw new Error("GitHub is not enabled");
@@ -31781,6 +31852,7 @@ var LocalToolComposer = class {
   onAudit;
   name = "local-sandbox";
   tools;
+  received = 0;
   available() {
     return sandboxSupport();
   }
@@ -31789,6 +31861,7 @@ var LocalToolComposer = class {
   }
   async run(program, opts = {}) {
     const started = Date.now();
+    this.received = 0;
     const limits = { ...DEFAULT_LIMITS, ...opts.limits };
     const support = this.available();
     const calls = [];
@@ -31804,10 +31877,10 @@ var LocalToolComposer = class {
     return this.execute(program, limits, new Set(opts.allowWrites ?? []), calls, started, opts.signal);
   }
   async execute(program, limits, writes, calls, started, signal) {
-    const dir = realpathSync2(mkdtempSync(join14(tmpdir(), "pl-sbx-")));
-    const file2 = join14(dir, "runner.mjs");
-    writeFileSync4(file2, RUNNER_SOURCE, { mode: 384 });
-    chmodSync(file2, 384);
+    const dir = realpathSync2(mkdtempSync(join15(tmpdir(), "pl-sbx-")));
+    const file2 = join15(dir, "runner.mjs");
+    writeFileSync5(file2, RUNNER_SOURCE, { mode: 384 });
+    chmodSync2(file2, 384);
     const child = spawn2(process.execPath, ["--permission", `--allow-fs-read=${dir}`, "--disable-warning=ExperimentalWarning", file2], { env: {}, stdio: ["pipe", "pipe", "pipe"], cwd: dir });
     let bytesIn = 0;
     const box = { verdict: null };
@@ -31818,6 +31891,7 @@ var LocalToolComposer = class {
     const timer = setTimeout(() => kill(`time limit of ${limits.maxDurationMs}ms exceeded`), limits.maxDurationMs);
     signal?.addEventListener("abort", () => kill("cancelled"));
     let stderrText = "";
+    child.stdin.on("error", () => void 0);
     child.stderr.on("data", (d) => void (stderrText += d.toString().slice(0, 2e3)));
     let stdoutBytes = 0;
     let buffer = "";
@@ -31829,7 +31903,13 @@ var LocalToolComposer = class {
       while ((nl = buffer.indexOf("\n")) >= 0) {
         const line = buffer.slice(0, nl);
         buffer = buffer.slice(nl + 1);
-        void this.onMessage(JSON.parse(line), child, limits, writes, calls, (n) => bytesIn += n, kill, (v2) => void (box.verdict ??= v2));
+        let parsed;
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          return kill("sandbox protocol violation: non-JSON output");
+        }
+        void this.onMessage(parsed, child, limits, writes, calls, (n) => bytesIn += n, kill, (v2) => void (box.verdict ??= v2));
       }
     });
     child.stdin.write(`${JSON.stringify({ type: "program", code: program, tools: [...this.tools.keys()] })}
@@ -31849,7 +31929,7 @@ var LocalToolComposer = class {
     const id3 = msg.id;
     const reply = (m) => void child.stdin?.write(`${JSON.stringify({ type: "result", id: id3, ...m })}
 `);
-    if (calls.length >= limits.maxCalls) return kill(`call limit of ${limits.maxCalls} exceeded`);
+    if (++this.received > limits.maxCalls) return kill(`call limit of ${limits.maxCalls} exceeded`);
     const name = String(msg.name);
     const t0 = Date.now();
     const audit = (a) => {
@@ -31879,21 +31959,21 @@ var LocalToolComposer = class {
 // src/evals/composer-bench.ts
 var KEYWORD = "billing";
 async function makeFixtureRepo(files2 = 60) {
-  const root = mkdtempSync2(join15(tmpdir2(), "pl-bench-"));
+  const root = mkdtempSync2(join16(tmpdir2(), "pl-bench-"));
   const git = new Git();
   await git.run(root, ["init", "-q", "-b", "main"]);
   await git.run(root, ["config", "user.email", "b@example.com"]);
   await git.run(root, ["config", "user.name", "Bench"]);
   for (let i = 0; i < files2; i++) {
     const name = i % 6 === 0 ? `src/billing/invoice${i}.ts` : `src/mod${i % 5}/file${i}.ts`;
-    mkdirSync6(dirname5(join15(root, name)), { recursive: true });
+    mkdirSync7(dirname6(join16(root, name)), { recursive: true });
     const body2 = Array.from({ length: 40 }, (_, l) => `export const v${i}_${l} = ${l}; // ${i % 6 === 0 ? KEYWORD : "misc"} line`).join("\n");
-    writeFileSync5(join15(root, name), `import './common';
+    writeFileSync6(join16(root, name), `import './common';
 ${body2}
 `);
   }
-  writeFileSync5(join15(root, "src/common.ts"), "export const common = 1;\n");
-  writeFileSync5(join15(root, "package.json"), JSON.stringify({ scripts: { test: "x", lint: "x" } }));
+  writeFileSync6(join16(root, "src/common.ts"), "export const common = 1;\n");
+  writeFileSync6(join16(root, "package.json"), JSON.stringify({ scripts: { test: "x", lint: "x" } }));
   await git.run(root, ["add", "-A"]);
   await git.run(root, ["commit", "-q", "-m", "chore: fixture"]);
   return root;
@@ -31960,65 +32040,65 @@ async function runComposerBench(repetitions = 5, files2 = 60) {
 
 // src/evals/runner.ts
 import { execFileSync as execFileSync3 } from "node:child_process";
-import { existsSync as existsSync14, readdirSync as readdirSync5, readFileSync as readFileSync13, statSync as statSync4 } from "node:fs";
+import { existsSync as existsSync15, readdirSync as readdirSync5, readFileSync as readFileSync14, statSync as statSync4 } from "node:fs";
 import { arch, platform } from "node:os";
-import { join as join21 } from "node:path";
+import { join as join22 } from "node:path";
 init_dag();
 init_workflow();
 
 // src/perf/record.ts
 init_errors3();
 init_hash();
-import { mkdirSync as mkdirSync7, writeFileSync as writeFileSync6 } from "node:fs";
-import { join as join16 } from "node:path";
+import { mkdirSync as mkdirSync8, writeFileSync as writeFileSync7 } from "node:fs";
+import { join as join17 } from "node:path";
 function recordMeasurement(store, runId, input2, artifactDir2) {
   const parsed = measurementSchema.safeParse(input2);
   if (!parsed.success) throw new PlError("PL_PERF_010", `invalid measurement: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
   const m = parsed.data;
   if (!m.samples && !m.summary) throw new PlError("PL_PERF_011", "a measurement needs raw samples or a tool summary");
-  const dir = join16(artifactDir2, runId);
-  mkdirSync7(dir, { recursive: true });
+  const dir = join17(artifactDir2, runId);
+  mkdirSync8(dir, { recursive: true });
   const body2 = JSON.stringify(m, null, 1);
-  const uri = join16(dir, `perf-${m.phase}-${m.commit.slice(0, 8)}.json`);
-  writeFileSync6(uri, body2);
+  const uri = join17(dir, `perf-${m.phase}-${m.commit.slice(0, 8)}.json`);
+  writeFileSync7(uri, body2);
   const evidenceId = store.addEvidence({ taskRunId: runId, kind: m.phase === "baseline" ? "perf-baseline" : "perf-after", uri, checksum: sha256(body2), commitSha: m.commit, environment: `${m.kind}; ${m.environment}`, summary: `${m.phase} ${m.target.metric} ${m.target.comparator} ${m.target.value}${m.target.unit} on ${m.workload.description}`, redactionStatus: "none-needed" });
   return { evidenceId, measurement: m };
 }
 
 // src/evals/fixture.ts
-import { mkdirSync as mkdirSync8, mkdtempSync as mkdtempSync3, realpathSync as realpathSync3, symlinkSync, writeFileSync as writeFileSync7 } from "node:fs";
+import { mkdirSync as mkdirSync9, mkdtempSync as mkdtempSync3, realpathSync as realpathSync3, symlinkSync, writeFileSync as writeFileSync8 } from "node:fs";
 import { tmpdir as tmpdir3 } from "node:os";
-import { dirname as dirname6, join as join17 } from "node:path";
+import { dirname as dirname7, join as join18 } from "node:path";
 async function makeRepo(files2) {
-  const root = realpathSync3(mkdtempSync3(join17(tmpdir3(), "pl-eval-")));
+  const root = realpathSync3(mkdtempSync3(join18(tmpdir3(), "pl-eval-")));
   const git = new Git();
   await git.run(root, ["init", "-q", "-b", "main"]);
   await git.run(root, ["config", "user.email", "eval@example.com"]);
   await git.run(root, ["config", "user.name", "Eval"]);
   await git.run(root, ["config", "commit.gpgsign", "false"]);
   for (const [f, c] of Object.entries(files2)) {
-    mkdirSync8(dirname6(join17(root, f)), { recursive: true });
-    writeFileSync7(join17(root, f), c);
+    mkdirSync9(dirname7(join18(root, f)), { recursive: true });
+    writeFileSync8(join18(root, f), c);
   }
   await git.run(root, ["add", "-A"]);
   await git.run(root, ["commit", "-q", "-m", "chore: fixture"]);
   return root;
 }
 function linkNodeModules(root, repoRoot) {
-  symlinkSync(join17(repoRoot, "node_modules"), join17(root, "node_modules"), "dir");
+  symlinkSync(join18(repoRoot, "node_modules"), join18(root, "node_modules"), "dir");
 }
 
 // src/evals/helpers.ts
 import { execFileSync } from "node:child_process";
-import { mkdirSync as mkdirSync9, readFileSync as readFileSync12, writeFileSync as writeFileSync8 } from "node:fs";
-import { dirname as dirname7, join as join18 } from "node:path";
+import { mkdirSync as mkdirSync10, readFileSync as readFileSync13, writeFileSync as writeFileSync9 } from "node:fs";
+import { dirname as dirname8, join as join19 } from "node:path";
 var write = (cwd, rel, content) => {
-  mkdirSync9(dirname7(join18(cwd, rel)), { recursive: true });
-  writeFileSync8(join18(cwd, rel), content);
+  mkdirSync10(dirname8(join19(cwd, rel)), { recursive: true });
+  writeFileSync9(join19(cwd, rel), content);
 };
 var read2 = (dir, rel) => {
   try {
-    return readFileSync12(join18(dir, rel), "utf8");
+    return readFileSync13(join19(dir, rel), "utf8");
   } catch {
     return null;
   }
@@ -32050,9 +32130,9 @@ var BASIC_CONFIG = { commands: { lint: "node -e 0", typecheck: "node -e 0", unit
 var PKG = JSON.stringify({ name: "fixture", version: "1.0.0" });
 
 // src/evals/tasks-basic.ts
-import { existsSync as existsSync13 } from "node:fs";
-import { join as join19 } from "node:path";
-var exists = (dir, f) => existsSync13(join19(dir, f));
+import { existsSync as existsSync14 } from "node:fs";
+import { join as join20 } from "node:path";
+var exists = (dir, f) => existsSync14(join20(dir, f));
 var f1 = {
   id: "feature-1-single-file",
   category: "feature",
@@ -32273,8 +32353,8 @@ var BASIC_TASKS = [f1, f2, f3, f4, f5, ...bugs, i1, i2, i3, p1, p2, r1, r2, x1, 
 
 // src/evals/tasks-browser.ts
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { join as join20 } from "node:path";
-var PW_CLI = () => join20(pluginRoot(), "node_modules", "@playwright", "test", "cli.js");
+import { join as join21 } from "node:path";
+var PW_CLI = () => join21(pluginRoot(), "node_modules", "@playwright", "test", "cli.js");
 var SERVER = (bug2) => `const http=require('http'),fs=require('fs');
 const items=[40,60];
 http.createServer((q,r)=>{
@@ -32417,7 +32497,7 @@ async function performanceFlow(task, e, root) {
   const run = await e.start({ protocolId: task.protocol, intent: task.intent });
   await e.drive(run.id);
   approvePlan(e.d.store, run.id, { planHash: e.d.store.getRun(run.id).currentPlanHash, by: HUMAN });
-  const artDir = join21(root, ".proofloop", "artifacts");
+  const artDir = join22(root, ".proofloop", "artifacts");
   const git = new Git();
   const env = `eval-host ${platform()}-${arch()}`;
   const workload = { description: "dedupe 20000 items with 5000 unique values", dataset: "synthetic-20000", concurrency: 1 };
@@ -32452,10 +32532,10 @@ async function standardFlow(task, h, root) {
   return { id: run.id, final: out.state, recovered: neverFalselyDone && ["PR_OPEN", "COMPLETE"].includes(out.state) };
 }
 function secretLeaked(dir, secret) {
-  if (!existsSync14(dir)) return false;
+  if (!existsSync15(dir)) return false;
   return readdirSync5(dir).some((f) => {
-    const p = join21(dir, f);
-    return statSync4(p).isDirectory() ? secretLeaked(p, secret) : readFileSync13(p, "utf8").includes(secret);
+    const p = join22(dir, f);
+    return statSync4(p).isDirectory() ? secretLeaked(p, secret) : readFileSync14(p, "utf8").includes(secret);
   });
 }
 async function runProofLoop(task) {
@@ -32482,7 +32562,7 @@ async function runProofLoop(task) {
     const accepted = delivered ? await task.acceptance(dir) : null;
     const regressed = delivered && task.regression ? !task.regression(dir) : false;
     const rootDirty = !await new Git().isClean(root);
-    const incidents = (rootDirty ? 1 : 0) + (secretLeaked(join21(root, ".proofloop", "artifacts"), secret) ? 1 : 0) + (read2(dir, ".env") !== null ? 1 : 0) + (task.category === "blocked" && task.regression && !task.regression(dir) ? 1 : 0);
+    const incidents = (rootDirty ? 1 : 0) + (secretLeaked(join22(root, ".proofloop", "artifacts"), secret) ? 1 : 0) + (read2(dir, ".env") !== null ? 1 : 0) + (task.category === "blocked" && task.regression && !task.regression(dir) ? 1 : 0);
     if (final === "BLOCKED") notes.push(run.blockedReason ?? "blocked");
     return {
       id: task.id,
@@ -32613,8 +32693,8 @@ function renderEvalMarkdown(r) {
 
 // src/cli/hook.ts
 init_paths();
-var MUTATING = /\bproofloop\b[^\n]*\b(approve|reject|cancel|pause|resume|run|gates|artifact|perf|blueprint|waive)\b/;
-var HUMAN_ONLY = /\bproofloop\b[^\n]*\b(approve|reject)\b/;
+var MUTATING = /\b(proofloop|main\.js|cli\.js)\b[^\n]*\b(approve|reject|cancel|pause|resume|run|gates|artifact|perf|blueprint|waive)\b/;
+var HUMAN_ONLY = /\b(proofloop|main\.js|cli\.js)\b[^\n]*\b(approve|reject)\b/;
 var FILE_TOOLS = /* @__PURE__ */ new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 function evaluateHook(input2, env) {
   const agent = env.PROOFLOOP_AGENT_SESSION === "1";
@@ -32629,14 +32709,19 @@ function evaluateHook(input2, env) {
   }
   return { decision: "allow", reason: "no policy objection" };
 }
+var STATE_ACCESS = /state\.db|ledger\.key|\.proofloop[\\/]+(state|artifacts)|cli[\\/]main\.js|dist[\\/]cli\.js/;
 function bashDecision(command, agent) {
+  if (STATE_ACCESS.test(command))
+    return agent ? { decision: "deny", reason: "ProofLoop state, ledger key and CLI internals are not accessible to agent sessions" } : { decision: "ask", reason: "This command touches ProofLoop state or the ledger key; confirm it is intended" };
   if (MUTATING.test(command)) {
     if (agent) return { decision: "deny", reason: "ProofLoop state, approvals and gates can only be changed by the engine or a human, never by an agent session" };
     if (HUMAN_ONLY.test(command)) return { decision: "ask", reason: "Approving or rejecting a ProofLoop plan is a human decision. Confirm you reviewed the plan." };
   }
-  const verdict = evaluateCommand(command, { allowed: [["*"]] });
-  if (verdict.verdict === "needs_approval" && (verdict.cls === "critical" || verdict.cls === "destructive"))
-    return agent ? { decision: "deny", reason: `ProofLoop policy: ${verdict.reason} requires explicit human approval immediately before the action` } : { decision: "ask", reason: `ProofLoop policy: ${verdict.reason}; confirm this ${verdict.cls} action` };
+  for (const seg of [command, ...commandSegments(command)]) {
+    const verdict = evaluateCommand(seg, { allowed: [["*"]] });
+    if (verdict.verdict === "needs_approval" && (verdict.cls === "critical" || verdict.cls === "destructive"))
+      return agent ? { decision: "deny", reason: `ProofLoop policy: ${verdict.reason} requires explicit human approval immediately before the action` } : { decision: "ask", reason: `ProofLoop policy: ${verdict.reason}; confirm this ${verdict.cls} action` };
+  }
   return { decision: "allow", reason: "no policy objection" };
 }
 function hookOutput(d) {
@@ -32677,8 +32762,8 @@ function outcomeText(o, next) {
 `;
 }
 async function engineOf(c, root) {
-  const runtime = c.makeRuntime?.(root) ?? new ClaudeCodeRuntime({ guardCommand: join22(pluginRoot(), "bin", "proofloop") });
-  const logFile = join22(root, ".proofloop", "logs", "proofloop.log");
+  const runtime = c.makeRuntime?.(root) ?? new ClaudeCodeRuntime({ guardCommand: join23(pluginRoot(), "bin", "proofloop") });
+  const logFile = join23(root, ".proofloop", "logs", "proofloop.log");
   return createEngine({ root, runtime, logger: new FileLogger(logFile) });
 }
 async function runCli(argv, c) {
@@ -32754,9 +32839,9 @@ async function withEngine(c, root, cmd2, rest, v, json2) {
     case "report": {
       if (!id3) return c.io.err("usage: proofloop report <id> [--out file]\n"), EXIT.usage;
       const md = e.report(id3);
-      const dest = v.out ?? join22(root, ".proofloop", "reports", `${id3}.md`);
-      mkdirSync10(dirname8(dest), { recursive: true });
-      writeFileSync9(dest, md);
+      const dest = v.out ?? join23(root, ".proofloop", "reports", `${id3}.md`);
+      mkdirSync11(dirname9(dest), { recursive: true });
+      writeFileSync10(dest, md);
       show(c, json2, { path: dest }, `${md}
 written to ${dest}
 `);
@@ -32850,7 +32935,7 @@ async function planCmd(c, e, rest, v, json2) {
   }
   if (sub === "submit") {
     const file2 = v.file;
-    const raw = file2 ? readFileSync14(file2, "utf8") : c.io.stdin();
+    const raw = file2 ? readFileSync15(file2, "utf8") : c.io.stdin();
     return await submit(c, id3, raw, e);
   }
   return c.io.err("usage: proofloop plan show|submit <id>\n"), EXIT.usage;
@@ -32901,7 +32986,7 @@ These are ASSUMPTIONS: list each as an unconfirmed assumption in the blueprint.
     return EXIT.ok;
   }
   if (sub === "submit") {
-    const raw = v.file ? readFileSync14(String(v.file), "utf8") : c.io.stdin();
+    const raw = v.file ? readFileSync15(String(v.file), "utf8") : c.io.stdin();
     const r = submitBlueprint(st, id3, JSON.parse(raw));
     c.io.out(`${r.markdown}
 blueprint hash: ${r.hash}
@@ -32926,9 +33011,9 @@ function artifactCmd(c, e, rest, v, json2, root) {
     return EXIT.ok;
   }
   if (sub !== "add" || !id3 || !name) return c.io.err('usage: proofloop artifact add <id> <name> (--file path | --text "...") | artifact list <id>\n'), EXIT.usage;
-  const content = v.file ? readFileSync14(String(v.file), "utf8") : String(v.text ?? "");
+  const content = v.file ? readFileSync15(String(v.file), "utf8") : String(v.text ?? "");
   if (!content.trim()) return c.io.err("artifact content is empty\n"), EXIT.usage;
-  const evd = addArtifact(e.d.store, id3, { name, content, artifactDir: join22(root, ".proofloop", "artifacts"), commitSha: e.d.store.getRun(id3).headSha ?? void 0 });
+  const evd = addArtifact(e.d.store, id3, { name, content, artifactDir: join23(root, ".proofloop", "artifacts"), commitSha: e.d.store.getRun(id3).headSha ?? void 0 });
   c.io.out(`recorded artifact ${name} (${evd})
 `);
   return EXIT.ok;
@@ -32936,36 +33021,36 @@ function artifactCmd(c, e, rest, v, json2, root) {
 function perfCmd(c, e, rest, v, json2, root) {
   const [sub, id3] = rest;
   if (!id3 || !v.file) return c.io.err("usage: proofloop perf record <id> --file measurement.json | perf import-k6 <id> --file k6.json --meta meta.json\n"), EXIT.usage;
-  let input2 = JSON.parse(readFileSync14(String(v.file), "utf8"));
+  let input2 = JSON.parse(readFileSync15(String(v.file), "utf8"));
   if (sub === "import-k6") {
     if (!v.meta) return c.io.err("import-k6 needs --meta with phase, environment, workload, target, commit, capturedAt\n"), EXIT.usage;
-    input2 = fromK6Summary(input2, JSON.parse(readFileSync14(String(v.meta), "utf8")));
+    input2 = fromK6Summary(input2, JSON.parse(readFileSync15(String(v.meta), "utf8")));
   } else if (sub !== "record") return c.io.err("usage: proofloop perf record|import-k6 <id> ...\n"), EXIT.usage;
-  const r = recordMeasurement(e.d.store, id3, input2, join22(root, ".proofloop", "artifacts"));
+  const r = recordMeasurement(e.d.store, id3, input2, join23(root, ".proofloop", "artifacts"));
   show(c, json2, r.measurement, `recorded ${r.measurement.phase} (${r.measurement.kind}, n=${sampleCount(r.measurement)}) at ${r.measurement.commit.slice(0, 8)}
 `);
   return EXIT.ok;
 }
 async function evalCmd(c, rest, v, json2, root) {
-  const out = resolve2(c.cwd, String(v.out ?? join22(root, "evals", "reports")));
-  mkdirSync10(out, { recursive: true });
+  const out = resolve2(c.cwd, String(v.out ?? join23(root, "evals", "reports")));
+  mkdirSync11(out, { recursive: true });
   if (rest[0] === "composer") {
     const rep2 = await runComposerBench(5, 60);
-    writeFileSync9(join22(out, "composer-bench.json"), `${JSON.stringify(rep2, null, 2)}
+    writeFileSync10(join23(out, "composer-bench.json"), `${JSON.stringify(rep2, null, 2)}
 `);
     show(c, json2, rep2, `sequential: ${rep2.sequential.roundTrips} round trips, ${rep2.sequential.contextBytes} context bytes
 composed:   ${rep2.composed ? `${rep2.composed.roundTrips} round trip, ${rep2.composed.contextBytes} context bytes` : "unavailable on this Node"}
 ${rep2.note}
-written to ${join22(out, "composer-bench.json")}
+written to ${join23(out, "composer-bench.json")}
 `);
     return EXIT.ok;
   }
   const only = rest.length ? rest : void 0;
   const rep = await runEvals({ only, log: (l) => c.io.err(`${l}
 `) });
-  writeFileSync9(join22(out, "latest.json"), `${JSON.stringify(rep, null, 2)}
+  writeFileSync10(join23(out, "latest.json"), `${JSON.stringify(rep, null, 2)}
 `);
-  writeFileSync9(join22(out, "latest.md"), renderEvalMarkdown(rep));
+  writeFileSync10(join23(out, "latest.md"), renderEvalMarkdown(rep));
   show(c, json2, rep.summary, `${renderEvalMarkdown(rep)}
 written to ${out}
 `);
@@ -32984,7 +33069,7 @@ function validate2(c, files2) {
   if (files2.length === 0) return c.io.err("usage: proofloop protocol validate <file.yaml...>\n"), EXIT.usage;
   let bad = 0;
   for (const f of files2) {
-    const { diagnostics } = parseProtocol(readFileSync14(resolve2(c.cwd, f), "utf8"), f);
+    const { diagnostics } = parseProtocol(readFileSync15(resolve2(c.cwd, f), "utf8"), f);
     if (diagnostics.length === 0) c.io.out(`ok  ${f}
 `);
     for (const d of diagnostics) {
@@ -33022,7 +33107,7 @@ async function setup(c, root, o) {
     { name: "gh (optional)", ok: gh.code === 0, detail: gh.spawnError ? "not installed" : gh.code === 0 ? "authenticated" : "not authenticated" }
   ];
   const cfg = configSchema.parse({ github: { enabled: Boolean(repo) && gh.code === 0, ...repo ? { repo } : {} }, commands: {} });
-  const exists2 = existsSync15(configPath(root));
+  const exists2 = existsSync16(configPath(root));
   if (o.yes && !exists2) writeConfig(root, cfg);
   const text2 = `ProofLoop ${ENGINE_VERSION} self-check (read-only)
 ${checks.map((k) => `  ${k.ok ? "ok " : "!! "} ${k.name}: ${k.detail}`).join("\n")}
@@ -33046,7 +33131,7 @@ var io = {
   err: (t) => void process.stderr.write(t),
   stdin: () => {
     try {
-      return readFileSync15(0, "utf8");
+      return readFileSync16(0, "utf8");
     } catch {
       return "";
     }

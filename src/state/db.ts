@@ -84,6 +84,10 @@ const MIGRATIONS: readonly string[] = [
   CREATE TRIGGER event_no_update BEFORE UPDATE ON event BEGIN SELECT RAISE(ABORT, 'audit events are append-only'); END;
   CREATE TRIGGER event_no_delete BEFORE DELETE ON event BEGIN SELECT RAISE(ABORT, 'audit events are append-only'); END;
   `,
+  `
+  ALTER TABLE gate_result ADD COLUMN sig TEXT;
+  ALTER TABLE approval ADD COLUMN sig TEXT;
+  `,
 ];
 
 export function openDb(path: string): Db {

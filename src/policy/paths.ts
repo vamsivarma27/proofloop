@@ -13,9 +13,10 @@ const WRITE_DENY: readonly RegExp[] = [
   /(^|\/)node_modules(\/|$)/,
   /\.(pem|key|p12|pfx)$/,
   /(^|\/)id_(rsa|ed25519|ecdsa)/,
+  /(^|\/)\.(npmrc|netrc|envrc)$/,
 ];
 
-const READ_DENY: readonly RegExp[] = [/(^|\/)\.env(\.|$)/, /\.(pem|key|p12|pfx)$/, /(^|\/)id_(rsa|ed25519|ecdsa)/, /(^|\/)\.proofloop\/state\.db/, /(^|\/)\.aws\//, /(^|\/)\.ssh\//];
+const READ_DENY: readonly RegExp[] = [/(^|\/)\.env(\.|$)/, /\.(pem|key|p12|pfx)$/, /(^|\/)id_(rsa|ed25519|ecdsa)/, /(^|\/)\.proofloop\//, /(^|\/)\.aws\//, /(^|\/)\.ssh\//, /(^|\/)\.(npmrc|netrc|envrc)$/, /(^|\/)\.kube\/config$/, /(^|\/)\.docker\/config\.json$/];
 
 /** Resolves symlinks on the deepest existing ancestor so a link inside the root cannot point outside it. */
 function realish(p: string): string {
@@ -35,7 +36,7 @@ export function checkPath(root: string, target: string, mode: 'read' | 'write'):
   const resolved = realish(resolve(root, target));
   const rel = relative(realRoot, resolved);
   if (rel === '..' || rel.startsWith(`..${sep}`) || resolve(rel) === rel) return { ok: false, reason: `path escapes the allowed root: ${target}` };
-  const norm = rel.split(sep).join('/');
+  const norm = rel.split(sep).join('/').toLowerCase(); // macOS/Windows file systems are case-insensitive
   const deny = mode === 'write' ? WRITE_DENY : READ_DENY;
   const hit = deny.find((re) => re.test(norm));
   if (hit) return { ok: false, reason: `${mode} to "${norm}" is denied by policy` };

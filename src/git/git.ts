@@ -94,7 +94,7 @@ export class Git {
     for (let i = 0; i < parts.length; i++) {
       const status = parts[i]!.slice(0, 2);
       res.push({ status, path: parts[i]!.slice(3) });
-      if (status[0] === 'R' || status[0] === 'C') i++;
+      if (status[0] === 'R' || status[0] === 'C') res.push({ status: 'D ', path: parts[++i]! }); // the rename source is a change too
     }
     return res;
   }

@@ -6,7 +6,12 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/\bAKIA[0-9A-Z]{16}\b/g, '[REDACTED:aws-key]'],
   [/\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g, '[REDACTED:slack-token]'],
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{12,}/gi, '$1 [REDACTED:credential]'],
-  [/\b(https?:\/\/)[^\s/:@]+:[^\s/@]+@/g, '$1[REDACTED:userinfo]@'],
+  [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/:@]*:[^\s/@]+@/gi, '$1[REDACTED:userinfo]@'],
+  [/\b(sk|rk|pk)_(live|test)_[A-Za-z0-9]{10,}\b/g, '[REDACTED:api-key]'],
+  [/\bAIza[0-9A-Za-z_-]{30,}\b/g, '[REDACTED:api-key]'],
+  [/\bnpm_[A-Za-z0-9]{30,}\b/g, '[REDACTED:npm-token]'],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, '[REDACTED:jwt]'],
+  [/\b([A-Z0-9_]*(?:DATABASE_URL|CONNECTION_STRING|DSN|REDIS_URL|MONGO_URI)[A-Z0-9_]*)\s*[=:]\s*["']?[^\s"']{6,}["']?/gi, '$1=[REDACTED]'],
   [
     /\b([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|CREDENTIAL|PRIVATE_KEY)[A-Z0-9_]*)\s*[=:]\s*["']?[^\s"']{4,}["']?/gi,
     '$1=[REDACTED]',
