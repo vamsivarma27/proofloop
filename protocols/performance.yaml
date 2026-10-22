@@ -1,0 +1,30 @@
+schemaVersion: 1
+id: performance
+version: 1.0.0
+title: Performance protocol
+description: Measure a baseline, change one thing, and report before/after against a stated target.
+engine: ">=0.1.0"
+mode: existing-repo
+defaultRisk: medium
+retry: { maxRepairAttempts: 3, stopOnIdenticalFailure: true }
+requiredArtifacts: [baseline, measurement-methodology, profiler-evidence, change-hypothesis, before-after-result, regression-checks]
+gates:
+  - { id: baseline-recorded, kind: performance, required: true, description: Baseline with workload and target exists before optimizing }
+  - { id: before-after, kind: performance, required: true }
+  - { id: load, kind: load, required: false, minRisk: high }
+  - { id: lint, kind: lint, required: true }
+  - { id: unit, kind: unit, required: true }
+  - { id: build, kind: build, required: true }
+phases:
+  - { id: intake, title: "Capture workload, target and environment" }
+  - { id: clarify, title: Confirm target and acceptable trade-offs }
+  - { id: reconnaissance, title: Profile and inspect queries }
+  - { id: impact, title: "Separate model, app, database, network and render time" }
+  - { id: plan, title: Plan one measured change, requiredArtifacts: [baseline, change-hypothesis] }
+  - { id: approval, title: Human plan approval }
+  - { id: implementation, title: Apply the change }
+  - { id: verification, title: Re-measure and run regression gates, gates: [baseline-recorded, before-after, load, lint, unit, build] }
+  - { id: repair, title: Bounded repair loop }
+  - { id: review, title: Independent review of methodology }
+  - { id: delivery, title: Report trade-offs and whether the target was met }
+  - { id: retrospective, title: Propose harness improvements }

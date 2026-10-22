@@ -1,0 +1,24 @@
+{
+  "task": "find files relevant to \"billing\", read 3 ranges, trace their dependencies, list detected test commands",
+  "repetitions": 5,
+  "environment": {
+    "node": "v25.8.1",
+    "platform": "darwin-arm64",
+    "files": 60
+  },
+  "sequential": {
+    "mode": "sequential",
+    "roundTrips": 8,
+    "toolCalls": 8,
+    "contextBytes": 6003,
+    "wallMs": 137
+  },
+  "composed": {
+    "mode": "composed",
+    "roundTrips": 1,
+    "toolCalls": 8,
+    "contextBytes": 388,
+    "wallMs": 215
+  },
+  "note": "wallMs covers tool execution only (including sandbox start-up); model latency and token cost are not measured. Context bytes are a proxy for tokens."
+}

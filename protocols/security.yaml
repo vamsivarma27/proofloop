@@ -1,0 +1,29 @@
+schemaVersion: 1
+id: security
+version: 1.0.0
+title: Security protocol
+description: Threat-model, test negative paths, scan dependencies; findings cannot be dismissed by an LLM alone.
+engine: ">=0.1.0"
+mode: existing-repo
+defaultRisk: high
+retry: { maxRepairAttempts: 3, stopOnIdenticalFailure: true }
+requiredArtifacts: [threat-model, trust-boundaries, authorization-checks, negative-tests, scan-results, remediation-plan]
+gates:
+  - { id: lint, kind: lint, required: true }
+  - { id: unit, kind: unit, required: true }
+  - { id: build, kind: build, required: true }
+  - { id: negative-tests, kind: integration, required: true }
+  - { id: security-scan, kind: security-scan, required: true }
+phases:
+  - { id: intake, title: Capture the security concern }
+  - { id: clarify, title: Confirm authorization and isolated environment }
+  - { id: reconnaissance, title: Map trust boundaries }
+  - { id: impact, title: Build the threat model }
+  - { id: plan, title: Plan remediation and negative tests, requiredArtifacts: [threat-model, remediation-plan] }
+  - { id: approval, title: Human plan approval }
+  - { id: implementation, title: Remediate }
+  - { id: verification, title: Run negative tests and scans, gates: [lint, unit, build, negative-tests, security-scan] }
+  - { id: repair, title: Bounded repair loop }
+  - { id: review, title: Independent security review }
+  - { id: delivery, title: Open the pull request with evidence }
+  - { id: retrospective, title: Propose harness improvements }

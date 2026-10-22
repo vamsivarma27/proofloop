@@ -1,0 +1,31 @@
+schemaVersion: 1
+id: bug
+version: 1.0.0
+title: Bug protocol
+description: Reproduce, root-cause and fix a defect with a regression test that fails before and passes after.
+engine: ">=0.1.0"
+mode: existing-repo
+defaultRisk: medium
+retry: { maxRepairAttempts: 3, stopOnIdenticalFailure: true }
+requiredArtifacts: [reproduction-result, root-cause, blast-radius-map, regression-test, verification-report]
+gates:
+  - { id: regression-test, kind: unit, required: true, description: Regression test that failed before the fix }
+  - { id: lint, kind: lint, required: true }
+  - { id: typecheck, kind: typecheck, required: true }
+  - { id: unit, kind: unit, required: true }
+  - { id: build, kind: build, required: true }
+  - { id: integration, kind: integration, required: true, minRisk: medium }
+  - { id: browser, kind: browser, required: true, minRisk: high }
+phases:
+  - { id: intake, title: Capture observed and expected behavior }
+  - { id: clarify, title: Request missing reproduction details }
+  - { id: reconnaissance, title: Reproduce before modifying code }
+  - { id: impact, title: Trace blast radius }
+  - { id: plan, title: Plan the smallest correct fix, requiredArtifacts: [root-cause, regression-test] }
+  - { id: approval, title: Human plan approval }
+  - { id: implementation, title: Add regression test then fix }
+  - { id: verification, title: Run regression and relevant gates, gates: [regression-test, lint, typecheck, unit, build, integration, browser] }
+  - { id: repair, title: Bounded repair loop }
+  - { id: review, title: Independent fresh-context review }
+  - { id: delivery, title: Open the pull request with evidence }
+  - { id: retrospective, title: Propose harness improvements, skipped: { reason: Bug fixes rarely need harness changes; raise manually when a pattern recurs } }

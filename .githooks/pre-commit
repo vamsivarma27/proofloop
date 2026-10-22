@@ -1,0 +1,8 @@
+#!/bin/sh
+# Enabled via `git config core.hooksPath .githooks` (see GETTING_STARTED.md). Never bypass with --no-verify.
+set -e
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --no-banner --redact >/dev/null
+fi
+pnpm -s typecheck
+pnpm -s lint

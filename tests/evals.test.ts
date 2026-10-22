@@ -1,0 +1,50 @@
+import { describe, expect, it } from 'vitest';
+import { ScriptedRuntime } from '../src/agent/runtime';
+import { REAL_ELIGIBLE, renderRealMarkdown, runRealEvals } from '../src/evals/real';
+import { ALL_TASKS, renderEvalMarkdown, runEvals, summarizeMode } from '../src/evals/runner';
+
+describe('eval suite shape (PRD 18)', () => {
+  it('has the required categories and counts', () => {
+    const n = (c: string) => ALL_TASKS.filter((t) => t.category === c).length;
+    expect({ feature: n('feature'), bug: n('bug'), integration: n('integration'), browser: n('browser'), performance: n('performance'), recovery: n('recovery'), blocked: n('blocked') }).toEqual({ feature: 5, bug: 5, integration: 3, browser: 3, performance: 2, recovery: 2, blocked: 2 });
+    expect(new Set(ALL_TASKS.map((t) => t.id)).size).toBe(ALL_TASKS.length);
+  });
+
+  it('scripted run: the harness makes the right call on flawed behaviour and the baseline does not', async () => {
+    const rep = await runEvals({ only: ['feature-3', 'feature-4', 'feature-5', 'blocked-1'] });
+    expect(rep.proofloop.every((r) => r.correct)).toBe(true);
+    expect(rep.summary.proofloop.falseDeliveryRate).toBe(0);
+    expect(rep.summary.proofloop.safetyIncidents).toBe(0);
+    expect(rep.baseline.filter((r) => r.falseDelivery).length).toBeGreaterThanOrEqual(2);
+    expect(renderEvalMarkdown(rep)).toContain('scripted');
+    expect(summarizeMode([], 0).tasks).toBe(0);
+  });
+});
+
+describe('real-model mode wiring (no model is called here)', () => {
+  it('only offers tasks that need no scripted crash, recorder, browser or destructive setup', () => {
+    const ids = ALL_TASKS.filter(REAL_ELIGIBLE).map((t) => t.id);
+    expect(ids).toContain('feature-1-single-file');
+    expect(ids.some((i) => i.startsWith('browser') || i.startsWith('recovery') || i.startsWith('performance') || i.startsWith('blocked'))).toBe(false);
+  });
+
+  it('runs both arms through an injected runtime, honours the budget, and labels the report', async () => {
+    const task = ALL_TASKS.find((t) => t.id === 'feature-1-single-file')!;
+    const rt = new ScriptedRuntime(async (req) => {
+      if (req.role === 'planner') return { structured: task.plan };
+      if (req.role === 'implementer') {
+        await task.implement({ cwd: req.cwd, attempt: 1, taskId: /Implement ONLY task (\S+):/.exec(req.prompt)?.[1] ?? 'task-1', isRepair: false });
+        return { text: 'done', costUsd: 0.25 };
+      }
+      return { structured: { verdict: 'approve', findings: [], unsupportedClaims: [] }, costUsd: 0.05 };
+    });
+    const rep = await runRealEvals({ only: ['feature-1'], perTaskUsd: 1, totalUsd: 5, runtime: rt });
+    expect(rep.runtime).toBe('claude');
+    expect(rep.proofloop[0]).toMatchObject({ mode: 'proofloop', correct: true });
+    expect(rep.baseline[0]).toMatchObject({ mode: 'baseline', correct: true });
+    expect(rep.totalCostUsd).toBeGreaterThan(0);
+    expect(renderRealMarkdown(rep)).toContain('real-model evaluation report');
+    const none = await runRealEvals({ only: ['feature-1'], perTaskUsd: 1, totalUsd: 0, runtime: rt });
+    expect(none.proofloop).toEqual([]);
+  });
+});

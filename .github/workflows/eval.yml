@@ -1,0 +1,26 @@
+name: eval
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
+permissions:
+  contents: read
+jobs:
+  scripted:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 25
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: git config --global user.email ci@example.com && git config --global user.name ci
+      - run: ./bin/proofloop eval --out eval-out
+      - run: ./bin/proofloop eval composer --out eval-out
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: eval-reports
+          path: eval-out

@@ -1,0 +1,19 @@
+{
+  "description": "ProofLoop guard: agents cannot change approvals or state; protected paths and critical shell commands are policy-checked.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/proofloop",
+            "args": ["hook", "pre-tool-use"],
+            "timeout": 15,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ]
+  }
+}
