@@ -12,3 +12,7 @@ Metrics follow the PRD: verified completion, regression rate, first-pass rate, h
 What it shows: the harness catches wrong first attempts, weakened tests, out-of-scope edits, regression tests that never failed, unreproducible bugs, no-op "optimizations", destructive commands, repos with nothing to verify, and recovers from crashes. What it does not show: how a real model behaves. For that run a real-model baseline yourself (costs money) and compare with the same hidden checks; none is published here. Stability matters too: rates over 22 tasks are descriptive.
 
 `proofloop eval composer` writes round-trip and context-byte counts for sequential versus composed tool use. It makes no latency or cost claim.
+
+## Real-model run
+
+`proofloop eval --runtime claude --max-usd 1 --total-usd 10 [--model m] [task-substring...]` runs the eligible subset (no scripted crash, performance recorder, or browser) with Claude Code as planner/implementer/reviewer behind the harness, and the same model once without it as the baseline. It stops before a task if the total cap would be exceeded and writes `evals/reports/real-model.{json,md}`. It spends money and is nondeterministic: one run per arm per task, so treat differences as indicative only.

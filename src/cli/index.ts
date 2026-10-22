@@ -15,6 +15,7 @@ import { type DriveOutcome } from '../engine/engine';
 import { ENGINE_VERSION } from '../version';
 import { runComposerBench } from '../evals/composer-bench';
 import { renderEvalMarkdown, runEvals } from '../evals/runner';
+import { renderRealMarkdown, runRealEvals } from '../evals/real';
 import { addArtifact } from '../gates/artifacts';
 import { fromK6Summary, sampleCount } from '../perf/report';
 import { recordMeasurement } from '../perf/record';
@@ -51,7 +52,7 @@ Blueprint:      blueprint next-question|answer|defaults|submit|show <id>
 Lifecycle:      status [id] · approve <id> --plan-hash H [--scope S] · reject <id> --comment C · run <id> · resume <id> [--retry] · cancel <id> · pause <id>
 Evidence:       verify · report <id> [--out file] · readiness <id> · plan show <id>
 Artifacts:      artifact add|list <id> [name --file f] · perf record|import-k6 <id> --file f
-Evaluation:     eval [task-id-substring...] · eval composer  (scripted agent; writes evals/reports)
+Evaluation:     eval [task-id-substring...] · eval composer · eval --runtime claude [--max-usd 1] [--total-usd 10] [--model m]  (real model; spends money)
 Setup:          setup [--yes] [--github owner/repo] · protocols · protocol validate <file...>
 Options:        --root <dir> · --json
 `;
@@ -83,7 +84,7 @@ export async function runCli(argv: string[], c: CliEnv): Promise<number> {
     args: argv,
     allowPositionals: true,
     strict: false,
-    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' }, meta: { type: 'string' }, topic: { type: 'string' }, text: { type: 'string' } },
+    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' }, runtime: { type: 'string' }, 'max-usd': { type: 'string' }, 'total-usd': { type: 'string' }, model: { type: 'string' }, meta: { type: 'string' }, topic: { type: 'string' }, text: { type: 'string' } },
   });
   const [cmd, ...rest] = positionals;
   const json = values.json === true;
@@ -328,6 +329,13 @@ async function evalCmd(c: CliEnv, rest: string[], v: Record<string, string | boo
     return EXIT.ok;
   }
   const only = rest.length ? rest : undefined;
+  if (v.runtime === 'claude') {
+    const real = await runRealEvals({ only, perTaskUsd: Number(v['max-usd'] ?? 1), totalUsd: Number(v['total-usd'] ?? 10), model: v.model as string | undefined, log: (l) => c.io.err(`${l}\n`) });
+    writeFileSync(join(out, 'real-model.json'), `${JSON.stringify(real, null, 2)}\n`);
+    writeFileSync(join(out, 'real-model.md'), renderRealMarkdown(real));
+    show(c, json, real.summary, `${renderRealMarkdown(real)}\nwritten to ${out}\n`);
+    return EXIT.ok;
+  }
   const rep = await runEvals({ only, log: (l) => c.io.err(`${l}\n`) });
   writeFileSync(join(out, 'latest.json'), `${JSON.stringify(rep, null, 2)}\n`);
   writeFileSync(join(out, 'latest.md'), renderEvalMarkdown(rep));
