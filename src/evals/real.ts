@@ -64,10 +64,13 @@ export interface RealReport extends Omit<EvalReport, 'runtime'> {
   perTaskCapUsd: number;
 }
 
-export async function runRealEvals(opts: { only?: string[]; perTaskUsd: number; totalUsd: number; model?: string; log?: (l: string) => void }): Promise<RealReport> {
-  const runtime = new ClaudeCodeRuntime({ guardCommand: join(pluginRoot(), 'bin', 'proofloop'), ...(opts.model ? { model: opts.model } : {}) });
-  const v = await runtime.checkVersion();
-  if (!v.ok) throw new Error(`cannot run real-model evals: ${v.problem}`);
+export async function runRealEvals(opts: { only?: string[]; perTaskUsd: number; totalUsd: number; model?: string; log?: (l: string) => void; /** tests inject a scripted runtime */ runtime?: AgentRuntime }): Promise<RealReport> {
+  const claude = new ClaudeCodeRuntime({ guardCommand: join(pluginRoot(), 'bin', 'proofloop'), ...(opts.model ? { model: opts.model } : {}) });
+  if (!opts.runtime) {
+    const v = await claude.checkVersion();
+    if (!v.ok) throw new Error(`cannot run real-model evals: ${v.problem}`);
+  }
+  const runtime = opts.runtime ?? claude;
   const tasks = ALL_TASKS.filter(REAL_ELIGIBLE).filter((t) => !opts.only?.length || opts.only.some((o) => t.id.includes(o)));
   const proofloop: TaskOutcome[] = [];
   const baseline: TaskOutcome[] = [];
