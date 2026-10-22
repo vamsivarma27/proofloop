@@ -1,5 +1,8 @@
 # Changelog
 
+
+## Unreleased
+- `SequentialToolComposer`: fallback that needs neither the Node 25 sandbox nor Cloudflare. The program is a JSON array of `{tool, args}` steps, never code; the shared `ToolHost` still enforces tool existence, write authorization, input schema, call and time limits.
 ## 1.0.0-rc.2
 - Real-model evaluation mode (`proofloop eval --runtime claude`), first run published; it found two ProofLoop bugs (plan schema rejected by the CLI; regression-test command not derived from the approved plan), both fixed.
 - Cloudflare bridge to a user-deployed Worker (own contract, double opt-in, local-mock-tested only) over a shared `ToolHost`.

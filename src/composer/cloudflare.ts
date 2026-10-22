@@ -128,6 +128,6 @@ export class CloudflareToolComposer implements ToolComposer {
   }
 }
 
-export function createComposer(kind: 'local' | 'cloudflare', make: () => ToolComposer, env: NodeJS.ProcessEnv = process.env): ToolComposer {
+export function createComposer(kind: 'local' | 'cloudflare' | 'sequential', make: () => ToolComposer, env: NodeJS.ProcessEnv = process.env): ToolComposer {
   return kind === 'cloudflare' ? new CloudflareToolComposer(env) : make();
 }
