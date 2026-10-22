@@ -1,0 +1,18 @@
+schemaVersion: 1
+id: verify
+version: 1.0.0
+title: Verify protocol
+description: Run the repository's detected quality gates against the current commit and report evidence.
+engine: ">=0.1.0"
+mode: existing-repo
+defaultRisk: low
+retry: { maxRepairAttempts: 0, stopOnIdenticalFailure: true }
+gates:
+  - { id: format, kind: format, required: false }
+  - { id: lint, kind: lint, required: true }
+  - { id: typecheck, kind: typecheck, required: true }
+  - { id: unit, kind: unit, required: true }
+  - { id: build, kind: build, required: true }
+phases:
+  - { id: verification, title: Run gates against the current commit, gates: [format, lint, typecheck, unit, build] }
+  - { id: delivery, title: Report evidence }

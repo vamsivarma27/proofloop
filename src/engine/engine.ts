@@ -1,15 +1,16 @@
 import { basename, join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { gateReport } from '../gates/runner';
+import { buildGatePlan } from '../gates/plan';
+import { gateReport, runGates } from '../gates/runner';
 import { hashObject } from '../shared/hash';
 import { PlError } from '../shared/errors';
 import { TERMINAL_STATES, type TaskState } from '../state/machine';
 import type { TaskRun } from '../state/store';
-import { type EngineDeps, clockOf, totalCostUsd } from './deps';
+import { type EngineDeps, clockOf, gateCtx, totalCostUsd } from './deps';
 import { renderReport } from './report';
 import { runTasks } from './scheduler';
 import { stepDeliver, stepPullRequest } from './steps-deliver';
-import { block, stepPlan, stepReady, stepRecon } from './steps-plan';
+import { block, excludeStateDir, stepPlan, stepReady, stepRecon } from './steps-plan';
 import { stepRepair, stepReview, stepVerify } from './steps-verify';
 
 export type Waiting = 'approval' | 'merge' | 'github' | 'human';
@@ -36,6 +37,7 @@ export class Engine {
 
   async start(input: { protocolId: string; intent: string; again?: boolean }): Promise<TaskRun> {
     const { d } = this;
+    excludeStateDir(d.root);
     const protocol = d.registry.get(input.protocolId);
     const projectId = d.store.ensureProject({ name: basename(d.root), repository: await d.git.remoteRepo(d.root), defaultBranch: await d.git.defaultBranch(d.root), detectedStack: d.detected });
     const key = hashObject([input.protocolId, input.intent, d.root, input.again ? clockOf(d).nowMs() : 0]);
@@ -195,13 +197,37 @@ export class Engine {
     return true;
   }
 
+  /**
+   * `proofloop verify`: run the detected gates against the current clean commit and record evidence.
+   * It creates a ledger entry but never advances the delivery state machine.
+   */
+  async verifyCurrent(cwd = this.d.root): Promise<{ runId: string; report: string; allRequiredPass: boolean }> {
+    const { d } = this;
+    excludeStateDir(d.root);
+    const protocol = d.registry.get('verify');
+    const head = await d.git.head(cwd);
+    if (!(await d.git.isClean(cwd))) throw new PlError('PL_VERIFY_001', 'working tree has uncommitted changes; commit first so evidence maps to a commit');
+    const projectId = d.store.ensureProject({ name: basename(d.root), repository: await d.git.remoteRepo(d.root), defaultBranch: await d.git.defaultBranch(d.root), detectedStack: d.detected });
+    const run = d.store.createRun({ projectId, protocolId: protocol.id, protocolVersion: protocol.version, intent: `verify ${head.slice(0, 12)}`, risk: 'low', repairBudget: 0 });
+    d.store.setFields(run.id, { headSha: head, baseCommit: head, worktreePath: cwd });
+    const entries = buildGatePlan(protocol, 'low', d.detected, d.config);
+    d.store.setGatePlan(run.id, entries.map((e) => ({ gateId: e.gateId, kind: e.kind, required: e.required, command: e.command })));
+    await runGates(gateCtx(d, run.id, cwd, head), entries);
+    const rep = gateReport(d.store, run.id);
+    return { runId: run.id, report: renderReport(d.store, run.id), allRequiredPass: rep.allRequiredPass };
+  }
+
+  /** Stops new work. If a worker holds a live lease the drive loop honours the request; otherwise cancel is immediate. */
   async cancel(runId: string, reason = 'user'): Promise<DriveOutcome> {
     const { d } = this;
     d.store.audit(runId, 'cancel.requested', 'engine', { reason });
     const run = d.store.getRun(runId);
-    const beat = run.updatedAtUtc;
-    const idle = !['RUNNING', 'VERIFYING', 'REPAIRING', 'DISCOVERING', 'PLANNING'].includes(run.state) || clockOf(d).nowMs() - Date.parse(beat) > d.config.limits.leaseTtlMs;
-    if (idle && !TERMINAL_STATES.includes(run.state)) d.store.transition(runId, 'CANCELLED', { actor: 'engine', reason });
+    const now = clockOf(d).nowMs();
+    const live = d.store.nodes(runId).some((n) => {
+      const l = d.store.getLease(runId, n.id);
+      return l?.state === 'ACTIVE' && Date.parse(l.leaseExpiresAtUtc) > now;
+    });
+    if (!live && !TERMINAL_STATES.includes(run.state)) d.store.transition(runId, 'CANCELLED', { actor: 'engine', reason });
     return { runId, state: d.store.getRun(runId).state };
   }
 

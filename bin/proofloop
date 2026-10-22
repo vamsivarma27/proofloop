@@ -1,0 +1,4 @@
+#!/bin/sh
+# Thin launcher: all logic lives in dist/cli.js so commands stay thin and testable.
+dir=$(cd "$(dirname "$0")/.." && pwd)
+exec node --disable-warning=ExperimentalWarning "$dir/dist/cli.js" "$@"

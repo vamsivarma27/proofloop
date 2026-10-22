@@ -78,7 +78,7 @@ export function syncGatePlan(d: EngineDeps, runId: string): GatePlanEntry[] {
   return entries;
 }
 
-function excludeStateDir(root: string): void {
+export function excludeStateDir(root: string): void {
   const file = join(root, '.git', 'info', 'exclude');
   if (!existsSync(join(root, '.git'))) return;
   const text = existsSync(file) ? readFileSync(file, 'utf8') : '';
