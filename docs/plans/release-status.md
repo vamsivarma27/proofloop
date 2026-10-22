@@ -57,7 +57,7 @@ All four ✅ in `tests/sdk.test.ts`. ⚠ Contract kit is source-level (copy from
 | Evaluation reports baseline vs ProofLoop | ⚠ scripted suite (22 tasks) plus a small real-model run (10 tasks, one run per arm, $9.47): ProofLoop 70% verified vs 70% baseline, false delivery 22% vs 30%, ~4x slower; no advantage demonstrated and two bug tasks are unexplained (`evals/reports/real-model.md`) |
 | No known critical security defects | ⚠ the one critical finding (ledger forgery) is mitigated, not eliminated: same-user code can still read the key. No penetration test |
 | Install/upgrade/uninstall/recovery/troubleshooting docs | ✅ README, compatibility, troubleshooting |
-| Release artifacts, changelog, compatibility policy | ⚠ changelog + policy + release workflow exist; nothing is tagged or published (tags are for the release owner) |
+| Release artifacts, changelog, compatibility policy | ⚠ changelog, policy and release workflow exist; `v1.0.0-rc.1` is tagged on `develop`; no `v1.0.0` (the criteria below are unmet) |
 | Known limitations explicit | ✅ |
 
 The version is `1.0.0-rc.2` (Apache-2.0, `v1.0.0-rc.1` tagged earlier). Remaining before 1.0.0: a human or third-party security review, a real-model evaluation that shows the harness helps (the first one does not), and a Cloudflare bridge run against a real Worker.
