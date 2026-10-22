@@ -37,6 +37,11 @@ export class Git {
     return (await this.run(cwd, ['status', '--porcelain'])) === '';
   }
 
+  /** Tracked files changed in the working tree; untracked outputs (traces, build dirs) don't invalidate evidence. */
+  async hasTrackedChanges(cwd: string): Promise<boolean> {
+    return (await this.run(cwd, ['status', '--porcelain', '--untracked-files=no'])) !== '';
+  }
+
   async defaultBranch(cwd: string): Promise<string> {
     const ref = await this.run(cwd, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], { allowFail: true });
     if (ref) return ref.replace(/^origin\//, '');

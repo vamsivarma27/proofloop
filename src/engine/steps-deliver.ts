@@ -1,4 +1,3 @@
-import { getPlan } from '../plan/workflow';
 import type { TaskRun } from '../state/store';
 import { commitType, type EngineDeps } from './deps';
 import { renderReport, verifyEvidenceIntegrity } from './report';
@@ -8,9 +7,10 @@ const LOCAL_PREFIX = 'local-branch:';
 export const isLocalDelivery = (url: string | null): boolean => Boolean(url?.startsWith(LOCAL_PREFIX));
 
 function prTitle(d: EngineDeps, run: TaskRun): string {
-  const plan = getPlan(d.store, run.id);
-  const scope = plan.affectedModules[0]?.path.split('/').find((s) => s && !s.includes('.') && s !== 'src') ?? run.protocolId;
-  return `${commitType(run.protocolId)}(${scope.replace(/[^a-z0-9-]/gi, '').toLowerCase() || 'core'}): ${plan.intent.summary.charAt(0).toLowerCase()}${plan.intent.summary.slice(1)}`.slice(0, 72);
+  const body = (d.store.getPlanBody(run.id) ?? {}) as { intent?: { summary: string }; idea?: { oneLine: string }; affectedModules?: Array<{ path: string }> };
+  const summary = body.intent?.summary ?? body.idea?.oneLine ?? run.intent;
+  const scope = body.affectedModules?.[0]?.path.split('/').find((s) => s && !s.includes('.') && s !== 'src') ?? run.protocolId;
+  return `${commitType(run.protocolId)}(${scope.replace(/[^a-z0-9-]/gi, '').toLowerCase() || 'core'}): ${summary.charAt(0).toLowerCase()}${summary.slice(1)}`.slice(0, 72);
 }
 
 export type DeliverOutcome = 'delivered' | { waiting: 'github'; reason: string };

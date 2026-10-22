@@ -13,6 +13,9 @@ import { nodeExec } from '../shared/exec';
 import { FileLogger } from '../shared/log';
 import { type DriveOutcome } from '../engine/engine';
 import { ENGINE_VERSION } from '../version';
+import { TOPICS, type TopicId, fillDefaults, loadInterview, nextQuestion, recordAnswer } from '../blueprint/interview';
+import { renderBlueprintMarkdown } from '../blueprint/render';
+import { getBlueprint, submitBlueprint } from '../blueprint/workflow';
 import { evaluateHook, hookOutput } from './hook';
 import { renderPlanMarkdown } from '../plan/schema';
 import { getPlan } from '../plan/workflow';
@@ -37,7 +40,8 @@ export const EXIT = { ok: 0, error: 1, usage: 2, refused: 3, blocked: 10, paused
 const PROTOCOL_COMMANDS: Record<string, string> = { feature: 'feature', bug: 'bug', diagnose: 'troubleshooting', performance: 'performance', refactor: 'refactor', security: 'security' };
 const HELP = `proofloop ${ENGINE_VERSION}
 
-Task commands:  feature|bug|diagnose|performance|refactor|security "<request>"
+Task commands:  feature|bug|diagnose|performance|refactor|security "<request>" · start-project "<idea>"
+Blueprint:      blueprint next-question|answer|defaults|submit|show <id>
 Lifecycle:      status [id] · approve <id> --plan-hash H [--scope S] · reject <id> --comment C · run <id> · resume <id> [--retry] · cancel <id> · pause <id>
 Evidence:       verify · report <id> [--out file] · plan show <id>
 Setup:          setup [--yes] [--github owner/repo] · protocols · protocol validate <file...>
@@ -71,7 +75,7 @@ export async function runCli(argv: string[], c: CliEnv): Promise<number> {
     args: argv,
     allowPositionals: true,
     strict: false,
-    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' } },
+    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' }, topic: { type: 'string' }, text: { type: 'string' } },
   });
   const [cmd, ...rest] = positionals;
   const json = values.json === true;
@@ -142,6 +146,10 @@ async function withEngine(c: CliEnv, root: string, cmd: string, rest: string[], 
     }
     case 'plan':
       return planCmd(c, e, rest, v, json);
+    case 'start-project':
+      return startProject(c, e, rest.join(' ').trim(), json);
+    case 'blueprint':
+      return blueprintCmd(c, e, rest, v, json);
     default:
       c.io.err(`unknown command "${cmd}"\n${HELP}`);
       return EXIT.usage;
@@ -218,6 +226,50 @@ async function submit(c: CliEnv, id: string, raw: string, e: Eng): Promise<numbe
   const r = submitPlan(e.d.store, id, JSON.parse(raw));
   c.io.out(`${r.markdown}\nplan hash: ${r.hash}\n${r.warnings.map((w) => `warning: ${w}\n`).join('')}`);
   return EXIT.ok;
+}
+
+async function startProject(c: CliEnv, e: Eng, idea: string, json: boolean): Promise<number> {
+  if (!idea) return (c.io.err('usage: proofloop start-project "<one-sentence idea>"\n'), EXIT.usage);
+  const run = await e.start({ protocolId: 'idea-to-product', intent: idea });
+  const q = nextQuestion(loadInterview(e.d.store, run.id));
+  show(c, json, { runId: run.id, next: q }, `run ${run.id}: interview started (your idea is recorded as the outcome)\n${q ? `  next question [${q.topic}]: ${q.question}\n` : '  interview complete\n'}`);
+  return EXIT.ok;
+}
+
+async function blueprintCmd(c: CliEnv, e: Eng, rest: string[], v: Record<string, string | boolean | undefined>, json: boolean): Promise<number> {
+  const [sub, id] = rest;
+  if (!id) return (c.io.err('usage: proofloop blueprint next-question|answer|defaults|submit|show <id>\n'), EXIT.usage);
+  const st = e.d.store;
+  if (sub === 'next-question') {
+    const q = nextQuestion(loadInterview(st, id));
+    show(c, json, q, q ? `[${q.topic}] ${q.question}\n` : 'interview complete\n');
+    return EXIT.ok;
+  }
+  if (sub === 'answer') {
+    const topic = String(v.topic ?? '') as TopicId;
+    if (!TOPICS.some((t) => t.id === topic) || !v.text) return (c.io.err(`usage: proofloop blueprint answer <id> --topic ${TOPICS.map((t) => t.id).join('|')} --text "..."\n`), EXIT.usage);
+    recordAnswer(st, id, topic, { text: String(v.text), source: 'user' });
+    const q = nextQuestion(loadInterview(st, id));
+    show(c, json, q, q ? `recorded. next [${q.topic}]: ${q.question}\n` : 'recorded. interview complete\n');
+    return EXIT.ok;
+  }
+  if (sub === 'defaults') {
+    const filled = fillDefaults(st, id);
+    show(c, json, filled, `${filled.map((f) => `default for ${f.topic}: ${f.text}`).join('\n') || 'nothing to fill'}\nThese are ASSUMPTIONS: list each as an unconfirmed assumption in the blueprint.\n`);
+    return EXIT.ok;
+  }
+  if (sub === 'submit') {
+    const raw = v.file ? readFileSync(String(v.file), 'utf8') : c.io.stdin();
+    const r = submitBlueprint(st, id, JSON.parse(raw));
+    c.io.out(`${r.markdown}\nblueprint hash: ${r.hash}\n${r.warnings.map((w) => `warning: ${w}\n`).join('')}Review, then: proofloop approve ${id} --plan-hash ${r.hash}\n`);
+    return EXIT.ok;
+  }
+  if (sub === 'show') {
+    const run = st.getRun(id);
+    c.io.out(renderBlueprintMarkdown(getBlueprint(st, id), run.currentPlanHash ?? '', JSON.parse(st.getKey(`needs-confirmation:${id}`) ?? '[]')));
+    return EXIT.ok;
+  }
+  return (c.io.err('usage: proofloop blueprint next-question|answer|defaults|submit|show <id>\n'), EXIT.usage);
 }
 
 function protocols(c: CliEnv, json: boolean, root: string): number {

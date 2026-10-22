@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "idea": { "oneLine": "A lead and follow-up tracker for small sales teams", "outcome": "Sales reps never miss a follow-up and managers see the pipeline without asking" },
+  "facts": [
+    { "id": "fact-1", "text": "The team of 8 reps currently tracks leads in spreadsheets", "source": "user" },
+    { "id": "fact-2", "text": "FastAPI generates OpenAPI documentation automatically", "source": "research", "findingId": "res-1" }
+  ],
+  "assumptions": [
+    { "id": "A-1", "text": "Fewer than 10,000 leads per team in year one", "impact": "medium", "status": "confirmed", "needsConfirmation": false },
+    { "id": "A-2", "text": "Reps use Microsoft 365 mail, so Graph API sync is acceptable", "impact": "high", "status": "unconfirmed", "needsConfirmation": true }
+  ],
+  "recommendations": [
+    { "id": "rec-1", "text": "Start with a modular monolith", "rationale": "A small team and modest scale do not justify service boundaries yet", "basedOn": ["fact-1", "A-1"] }
+  ],
+  "research": [
+    { "id": "res-1", "claim": "FastAPI generates OpenAPI documentation automatically", "url": "https://fastapi.tiangolo.com/features/", "consultedAt": "2026-10-22T09:00:00Z", "confidence": "high", "sourceType": "vendor-docs" },
+    { "id": "res-2", "claim": "PostgreSQL supports row-level security for tenant isolation", "url": "https://www.postgresql.org/docs/current/ddl-rowsecurity.html", "consultedAt": "2026-10-22T09:05:00Z", "confidence": "high", "sourceType": "vendor-docs" }
+  ],
+  "personas": [
+    { "id": "P-1", "name": "Sales rep", "goals": ["Log a lead in under 30 seconds", "Know today's follow-ups"], "painPoints": ["Leads scattered across spreadsheets"] },
+    { "id": "P-2", "name": "Sales manager", "goals": ["See pipeline value by stage"], "painPoints": ["Status meetings to learn what is stuck"] }
+  ],
+  "journeys": [
+    { "id": "J-1", "personaId": "P-1", "name": "Capture and follow up", "steps": ["Create lead", "Schedule follow-up", "Receive reminder", "Log outcome"] }
+  ],
+  "requirements": [
+    { "id": "R-1", "text": "Reps can create and edit leads", "kind": "functional" },
+    { "id": "R-2", "text": "Reps get reminders for due follow-ups", "kind": "functional" },
+    { "id": "R-3", "text": "Managers see leads grouped by pipeline stage", "kind": "functional" },
+    { "id": "R-4", "text": "Pipeline view loads quickly", "kind": "nfr", "measurable": "p95 under 2 seconds at 200 concurrent users on staging hardware" },
+    { "id": "R-5", "text": "Mail sync attaches emails to leads", "kind": "integration" },
+    { "id": "R-6", "text": "Teams can only access their own data", "kind": "security" },
+    { "id": "R-7", "text": "Supports the expected year-one data volume", "kind": "capacity", "measurable": "10,000 leads and 200 concurrent users per team" }
+  ],
+  "features": [
+    { "id": "F-1", "name": "Lead capture", "description": "Create, edit and search leads", "mvp": true, "personaIds": ["P-1"], "requirementIds": ["R-1"] },
+    { "id": "F-2", "name": "Follow-up reminders", "description": "Schedule follow-ups and notify reps when due", "mvp": true, "personaIds": ["P-1"], "requirementIds": ["R-2"] },
+    { "id": "F-3", "name": "Pipeline board", "description": "Leads by stage with totals", "mvp": true, "personaIds": ["P-2"], "requirementIds": ["R-3", "R-4"] },
+    { "id": "F-4", "name": "Mail sync", "description": "Attach emails to leads", "mvp": false, "personaIds": ["P-1"], "requirementIds": ["R-5"] }
+  ],
+  "successMetrics": [
+    { "id": "SM-1", "metric": "Overdue follow-ups per rep per week", "target": "fewer than 2", "measurement": "query on follow-up due vs completed timestamps" }
+  ],
+  "architecture": {
+    "stack": [
+      { "id": "S-1", "area": "backend", "choice": "FastAPI (Python)", "alternatives": [{ "name": "Express (Node)", "tradeoff": "team is stronger in Python" }], "tradeoffs": "Fast to build and self-documenting; async ecosystem is smaller than Node", "satisfies": ["R-1", "R-2", "R-3"], "citations": ["res-1"] },
+      { "id": "S-2", "area": "database", "choice": "PostgreSQL with row-level security", "alternatives": [{ "name": "MongoDB", "tradeoff": "weaker relational reporting for pipeline totals" }], "tradeoffs": "Strong consistency and RLS for tenant isolation; needs migrations discipline", "satisfies": ["R-4", "R-6", "R-7"], "citations": ["res-2"] },
+      { "id": "S-3", "area": "integration", "choice": "Microsoft Graph mail adapter behind a port", "alternatives": [{ "name": "IMAP polling", "tradeoff": "works with any provider but is slower and harder to secure" }], "tradeoffs": "Adapter keeps the provider replaceable; requires tenant admin consent", "satisfies": ["R-5"], "citations": [] }
+    ],
+    "dataModel": [{ "entity": "lead", "fields": ["id", "tenant_id", "name", "stage", "created_at_utc"] }],
+    "apiBoundaries": ["REST /v1 with explicit versioning", "every request carries X-Tenant-ID"],
+    "integrations": [{ "name": "Microsoft Graph", "purpose": "mail sync", "risk": "OAuth consent and rate limits" }],
+    "securityModel": "RBAC with tenant isolation enforced at API, service, repository and database layers",
+    "operational": "Single region managed hosting, daily backups, structured logs with PII masked",
+    "capacity": { "assumptions": ["10,000 leads per team", "200 concurrent users per team"], "targets": [{ "metric": "pipeline view p95", "target": "under 2 seconds at the stated load" }] }
+  },
+  "risks": [{ "id": "risk-1", "text": "Graph API consent blocks mail sync", "likelihood": "medium", "impact": "medium", "mitigation": "Ship the MVP without mail sync; make it milestone 4" }],
+  "roadmap": {
+    "milestones": [
+      { "id": "M-1", "title": "Foundation and lead capture", "goal": "Auth, tenant isolation and lead CRUD", "dependencies": [], "featureIds": ["F-1"], "acceptanceCriteria": ["A rep can create and find a lead", "Another team cannot read it"], "verification": "API tests plus a Playwright journey for lead creation" },
+      { "id": "M-2", "title": "Pipeline board", "goal": "Managers see stages and totals", "dependencies": ["M-1"], "featureIds": ["F-3"], "acceptanceCriteria": ["Board totals match the database", "p95 under 2 seconds on the seeded dataset"], "verification": "Load test with recorded baseline and result" },
+      { "id": "M-3", "title": "Follow-up reminders", "goal": "Due follow-ups notify reps", "dependencies": ["M-1"], "featureIds": ["F-2"], "acceptanceCriteria": ["A due follow-up produces exactly one reminder"], "verification": "Integration test with a fake clock" },
+      { "id": "M-4", "title": "Mail sync", "goal": "Attach emails to leads", "dependencies": ["M-2", "M-3"], "featureIds": ["F-4"], "acceptanceCriteria": ["Sent mail appears on the lead"], "verification": "Contract tests against the adapter port", "assumptionIds": ["A-2"] }
+    ]
+  },
+  "openDecisions": [
+    { "id": "D-1", "question": "Is Microsoft 365 the mail provider for every team?", "defaultChoice": "Assume yes and confirm before milestone 4", "impact": "high", "relatedAssumptionIds": ["A-2"] }
+  ]
+}

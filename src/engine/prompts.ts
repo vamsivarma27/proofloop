@@ -58,15 +58,15 @@ ${a.interrupted ? '\nA previous attempt at this task was interrupted. The workin
 Run targeted tests with the allowed commands while you work. When finished, reply with a short summary of files changed.`;
 }
 
-export function reviewerPrompt(a: { plan: Plan; diff: string; gateSummary: string; role: 'reviewer' | 'security-reviewer' }): string {
+export function reviewerPrompt(a: { contract: unknown; diff: string; gateSummary: string; role: 'reviewer' | 'security-reviewer' }): string {
   return `You are a fresh-context ${a.role === 'security-reviewer' ? 'SECURITY reviewer' : 'code and architecture reviewer'}. You have read-only access.
 ${RULES}
 
 Judge the diff against the approved acceptance criteria. You see gate results as recorded evidence; do not trust the implementer's narrative.
 Check: criteria met? untested failure modes? API/permission/data-integrity regressions? claims not supported by evidence?
 ${a.role === 'security-reviewer' ? 'Focus: authorization, input validation, secrets, injection, dependency and privilege boundaries.\n' : ''}
-Approved plan:
-${JSON.stringify({ intent: a.plan.intent, acceptanceCriteria: a.plan.acceptanceCriteria }, null, 1)}
+Approved contract (plan or blueprint):
+${JSON.stringify(a.contract, null, 1)}
 
 Recorded gate evidence:
 ${a.gateSummary}

@@ -8,6 +8,9 @@ import { TERMINAL_STATES, type TaskState } from '../state/machine';
 import type { TaskRun } from '../state/store';
 import { type EngineDeps, clockOf, gateCtx, totalCostUsd } from './deps';
 import { renderReport } from './report';
+import { publishRoadmap } from '../blueprint/publish';
+import { recordAnswer } from '../blueprint/interview';
+import { getBlueprint } from '../blueprint/workflow';
 import { runTasks } from './scheduler';
 import { stepDeliver, stepPullRequest } from './steps-deliver';
 import { block, excludeStateDir, stepPlan, stepReady, stepRecon } from './steps-plan';
@@ -43,6 +46,7 @@ export class Engine {
     const key = hashObject([input.protocolId, input.intent, d.root, input.again ? clockOf(d).nowMs() : 0]);
     let run = d.store.createRun({ projectId, protocolId: protocol.id, protocolVersion: protocol.version, intent: input.intent, risk: protocol.defaultRisk, repairBudget: protocol.retry.maxRepairAttempts, idempotencyKey: key });
     if (run.state === 'NEW') run = d.store.transition(run.id, 'DISCOVERING', { actor: 'engine' });
+    if (protocol.mode === 'idea-to-product') recordAnswer(d.store, run.id, 'outcome', { text: input.intent, source: 'user' });
     await d.github.ensureParent(run.id, `[${protocol.id}] ${input.intent}`.slice(0, 120), `**Intent**\n\n${input.intent}\n\nProtocol: ${protocol.id}@${protocol.version}\nRun: \`${run.id}\``, [protocol.id === 'bug' ? 'bug' : 'feature']);
     return d.store.getRun(run.id);
   }
@@ -94,9 +98,11 @@ export class Engine {
         d.store.transition(id, 'DISCOVERING', { actor: 'engine' });
         return null;
       case 'DISCOVERING':
+        if (this.isIdea(run)) return stop('human', 'interview in progress: `proofloop blueprint next-question`, then `blueprint submit`');
         stepRecon(d, id);
         return null;
       case 'PLANNING':
+        if (this.isIdea(run)) return stop('human', 'waiting for a blueprint: `proofloop blueprint submit`');
         await stepPlan(d, id);
         return null;
       case 'AWAITING_APPROVAL':
@@ -127,8 +133,29 @@ export class Engine {
     }
   }
 
+  private isIdea(run: TaskRun): boolean {
+    return this.d.registry.get(run.protocolId).mode === 'idea-to-product';
+  }
+
+  /** Publishes the approved roadmap (GitHub) in place of implementation tasks. */
+  private async publish(id: string): Promise<DriveOutcome | null> {
+    const { d } = this;
+    if (!d.port) d.store.audit(id, 'roadmap.skipped', 'engine', { reason: 'GitHub disabled: roadmap lives in docs/product only' });
+    else {
+      try {
+        await publishRoadmap(d.store, d.port, id, getBlueprint(d.store, id));
+      } catch (e) {
+        await block(d, id, `roadmap publishing failed: ${e instanceof Error ? e.message : String(e)}`);
+        return null;
+      }
+    }
+    d.store.transition(id, 'VERIFYING', { actor: 'engine' });
+    return null;
+  }
+
   private async running(id: string): Promise<DriveOutcome | null> {
     const { d } = this;
+    if (this.isIdea(d.store.getRun(id))) return this.publish(id);
     const out = await runTasks(d, id);
     if (out.result === 'done') {
       d.store.transition(id, 'VERIFYING', { actor: 'engine' });

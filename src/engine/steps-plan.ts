@@ -1,8 +1,11 @@
 import { existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildGatePlan, TEST_INTEGRITY_GATE, type GatePlanEntry } from '../gates/plan';
+import { AC_TRACEABILITY_GATE, buildGatePlan, TEST_INTEGRITY_GATE, type GatePlanEntry } from '../gates/plan';
+import { riskRank } from '../protocol/schema';
 import { branchName } from '../git/git';
-import { submitPlan, getPlan } from '../plan/workflow';
+import { submitPlan } from '../plan/workflow';
+import { blueprintDocs } from '../blueprint/render';
+import { getBlueprint } from '../blueprint/workflow';
 import { RepoContext } from '../repo/context';
 import { isPlError } from '../shared/errors';
 import { REPRODUCTION_GATE } from './bug';
@@ -62,9 +65,10 @@ export async function stepPlan(d: EngineDeps, runId: string): Promise<void> {
 
 export function currentGateEntries(d: EngineDeps, runId: string): GatePlanEntry[] {
   const run = d.store.getRun(runId);
-  const plan = getPlan(d.store, runId);
-  const base = buildGatePlan(d.registry.get(run.protocolId), run.risk, d.detected, d.config, plan.gateCommands);
-  return [...base, TEST_INTEGRITY_GATE, ...(run.protocolId === 'bug' ? [REPRODUCTION_GATE] : [])];
+  const commands = (d.store.getPlanBody(runId) as { gateCommands?: Record<string, string> } | undefined)?.gateCommands ?? {};
+  const base = buildGatePlan(d.registry.get(run.protocolId), run.risk, d.detected, d.config, commands);
+  const traced = riskRank(run.risk) >= riskRank('medium') && Boolean((d.store.getPlanBody(runId) as { acceptanceCriteria?: unknown } | undefined)?.acceptanceCriteria);
+  return [...base, TEST_INTEGRITY_GATE, ...(traced ? [AC_TRACEABILITY_GATE] : []), ...(run.protocolId === 'bug' ? [REPRODUCTION_GATE] : [])];
 }
 
 export function gatePreview(d: EngineDeps, runId: string): string {
@@ -78,23 +82,40 @@ export function syncGatePlan(d: EngineDeps, runId: string): GatePlanEntry[] {
   return entries;
 }
 
-export function excludeStateDir(root: string): void {
+export function excludeStateDir(root: string, extraDirs: readonly string[] = []): void {
   const file = join(root, '.git', 'info', 'exclude');
   if (!existsSync(join(root, '.git'))) return;
   const text = existsSync(file) ? readFileSync(file, 'utf8') : '';
-  if (!/^\.proofloop\/?$/m.test(text)) appendFileSync(file, `${text.endsWith('\n') || text === '' ? '' : '\n'}.proofloop/\n`);
+  // local-only ignores: harness state and test-run outputs must never be swept into commits by `git add -A`
+  const wanted = ['.proofloop/', 'test-results/', 'playwright-report/', 'blob-report/', ...extraDirs.map((x) => `${x.replace(/\/$/, '')}/`)];
+  const missing = wanted.filter((w) => !text.split('\n').includes(w));
+  if (missing.length) appendFileSync(file, `${text.endsWith('\n') || text === '' ? '' : '\n'}${missing.join('\n')}\n`);
 }
 
 /** Isolated branch + worktree and the gate plan; idempotent so resume can call it again. */
 export async function stepReady(d: EngineDeps, runId: string): Promise<void> {
   const run = d.store.getRun(runId);
   if (!run.worktreePath || !existsSync(run.worktreePath)) {
-    excludeStateDir(d.root);
+    excludeStateDir(d.root, d.config.app.artifactDirs);
     const branch = run.activeBranch ?? branchName(run.protocolId, run.intent, run.id);
     const base = run.baseCommit ?? (await d.git.head(d.root));
     const wt = await d.git.createWorktree(d.root, branch, base, join(worktreeRoot(d, runId), 'integration'));
     d.store.setFields(runId, { baseCommit: base, activeBranch: branch, worktreePath: wt.path, headSha: wt.head });
   }
+  if (d.registry.get(run.protocolId).mode === 'idea-to-product') await writeBlueprintDocs(d, runId);
   syncGatePlan(d, runId);
   d.store.transition(runId, 'RUNNING', { actor: 'engine' });
+}
+
+/** Idea-to-Product delivers the approved blueprint, roadmap and ADRs as reviewable files in the worktree. */
+async function writeBlueprintDocs(d: EngineDeps, runId: string): Promise<void> {
+  const run = d.store.getRun(runId);
+  const needs = JSON.parse(d.store.getKey(`needs-confirmation:${runId}`) ?? '[]') as string[];
+  for (const f of blueprintDocs(getBlueprint(d.store, runId), run.currentPlanHash!, needs)) {
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    mkdirSync(join(run.worktreePath!, f.path, '..'), { recursive: true });
+    writeFileSync(join(run.worktreePath!, f.path), f.content);
+  }
+  const sha = await d.git.commitAll(run.worktreePath!, 'docs: add product blueprint, roadmap and decision records');
+  if (sha) d.store.setFields(runId, { headSha: sha });
 }

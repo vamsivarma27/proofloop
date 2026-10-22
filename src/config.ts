@@ -16,7 +16,20 @@ export const configSchema = z.strictObject({
     })
     .default({}),
   allowedCommands: z.array(z.string()).default([]),
-  app: z.strictObject({ start: cmd, url: z.url().optional(), seed: cmd, startTimeoutMs: z.number().int().positive().default(60_000) }).default({ startTimeoutMs: 60_000 }),
+  app: z
+    .strictObject({
+      start: cmd,
+      url: z.url().optional(),
+      seed: cmd,
+      startTimeoutMs: z.number().int().positive().default(60_000),
+      /** Run the browser gate once per persona with PROOFLOOP_PERSONA set; the gate takes the worst outcome. */
+      personas: z.array(z.string().regex(/^[a-z][a-z0-9-]*$/)).default([]),
+      /** Directories (relative to the repo) holding traces/screenshots; hashed into the evidence ledger. */
+      artifactDirs: z.array(z.string()).default([]),
+      /** Playwright JSON report path (relative); tests titled "@AC-n" are mapped to acceptance criteria. */
+      resultsFile: z.string().optional(),
+    })
+    .default({ startTimeoutMs: 60_000, personas: [], artifactDirs: [] }),
   limits: z
     .strictObject({
       maxParallel: z.number().int().min(1).max(8).default(1),

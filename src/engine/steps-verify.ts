@@ -132,11 +132,16 @@ export async function stepReview(d: EngineDeps, runId: string): Promise<'approve
   return 'handled';
 }
 
+function contractOf(d: EngineDeps, runId: string): unknown {
+  const b = (d.store.getPlanBody(runId) ?? {}) as Record<string, unknown>;
+  return b.acceptanceCriteria ? { intent: b.intent, acceptanceCriteria: b.acceptanceCriteria } : { idea: b.idea, requirements: b.requirements, roadmap: b.roadmap, assumptions: b.assumptions };
+}
+
 async function runReviewer(d: EngineDeps, run: TaskRun, role: 'reviewer' | 'security-reviewer'): Promise<string[] | 'failed'> {
   const rep = gateReport(d.store, run.id);
   const gateSummary = rep.gates.map((g) => `${g.gateId}: ${g.state}${g.stale ? ' (stale)' : ''}`).join('\n');
   const diff = await d.git.diff(run.worktreePath!, run.baseCommit!);
-  const res = await callAgent(d, run, { role, cwd: run.worktreePath!, jsonSchema: findingsJsonSchema(), prompt: reviewerPrompt({ plan: getPlan(d.store, run.id), diff, gateSummary, role }) });
+  const res = await callAgent(d, run, { role, cwd: run.worktreePath!, jsonSchema: findingsJsonSchema(), prompt: reviewerPrompt({ contract: contractOf(d, run.id), diff, gateSummary, role }) });
   const parsed = res.ok ? findingsSchema.safeParse(res.structured) : null;
   if (!parsed?.success) {
     await block(d, run.id, `${role} could not produce a valid review (${res.error ?? 'invalid output'}); an unreviewed change is not delivered`);

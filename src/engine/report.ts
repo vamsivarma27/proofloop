@@ -34,13 +34,14 @@ export function verifyEvidenceIntegrity(store: Store, runId: string): IntegrityP
 export function renderReport(store: Store, runId: string, opts: { forPr?: boolean } = {}): string {
   const run = store.getRun(runId);
   const rep = gateReport(store, runId);
-  const plan = store.getPlanBody(runId) as Plan | undefined;
+  const plan = store.getPlanBody(runId) as (Partial<Plan> & { idea?: { oneLine: string } }) | undefined;
   const history = store.events(runId, 'transition');
   const L: string[] = [];
   L.push(`# ProofLoop report — ${run.protocolId} (${run.id})`, '', `- State: **${run.state}**${run.blockedReason ? ` — ${run.blockedReason}` : ''}`, `- Protocol: ${run.protocolId}@${run.protocolVersion}, engine ${run.engineVersion}`, `- Risk: ${run.risk}`);
   L.push(`- Base: \`${run.baseCommit?.slice(0, 12) ?? 'n/a'}\`, candidate: \`${run.headSha?.slice(0, 12) ?? 'n/a'}\`, branch: \`${run.activeBranch ?? 'n/a'}\``);
   L.push(`- Plan: v${run.planVersion} \`${run.currentPlanHash?.slice(0, 12) ?? 'none'}\`, approved: ${run.approvedPlanHash === run.currentPlanHash && run.approvedPlanHash ? 'yes' : '**no**'}`, '');
-  if (plan) L.push(`**Intent:** ${plan.intent.summary}`, '');
+  const intent = plan?.intent?.summary ?? plan?.idea?.oneLine;
+  if (intent) L.push(`**Intent:** ${intent}`, '');
   L.push('## Gates (results refer to the candidate commit)', '', '| Gate | Required | Result | Evidence |', '|---|---|---|---|');
   for (const g of rep.gates) L.push(`| ${g.gateId} | ${g.required ? 'yes' : 'no'} | ${g.state}${g.stale ? ' (stale)' : ''} | ${g.evidence.length} artifact(s) |`);
   L.push('', rep.allRequiredPass ? 'All required gates PASS on the candidate commit.' : '**Not all required gates pass. This work is not verified.**');
@@ -55,11 +56,13 @@ export function renderReport(store: Store, runId: string, opts: { forPr?: boolea
   return `${L.join('\n')}\n`;
 }
 
-export function limitations(store: Store, runId: string, plan?: Plan): string[] {
+type AnyPlan = Partial<Plan> & { assumptions?: Array<{ id: string; text: string; confirmed?: boolean; status?: string }> };
+
+export function limitations(store: Store, runId: string, plan?: AnyPlan): string[] {
   const out: string[] = [];
   const rep = gateReport(store, runId);
   for (const g of rep.gates) if (g.state !== 'PASS') out.push(`gate ${g.gateId} is ${g.state}${g.required ? ' (required)' : ''}`);
-  for (const a of plan?.assumptions ?? []) if (!a.confirmed) out.push(`unconfirmed assumption ${a.id}: ${a.text}`);
+  for (const a of plan?.assumptions ?? []) if (a.confirmed === false || a.status === 'unconfirmed') out.push(`unconfirmed assumption ${a.id}: ${a.text}`);
   for (const m of plan?.affectedModules ?? []) if (m.status === 'hypothesis') out.push(`impact of ${m.path} was never confirmed`);
   for (const ac of plan?.acceptanceCriteria ?? []) if (ac.manual) out.push(`${ac.id} is verified manually only: ${ac.manual.reason}`);
   for (const e of store.events(runId, 'review.skipped')) out.push(`independent review skipped: ${String(e.data.reason)}`);

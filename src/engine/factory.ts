@@ -11,6 +11,8 @@ import type { Logger } from '../shared/log';
 import { openDb } from '../state/db';
 import { Store } from '../state/store';
 import { reproductionProven } from './bug';
+import { blueprintBuiltins } from '../blueprint/workflow';
+import { acTraceability } from '../browser/traceability';
 import type { BuiltinFn } from './deps';
 import { Engine } from './engine';
 
@@ -35,6 +37,6 @@ export async function createEngine(o: EngineOptions): Promise<Engine> {
   const port = o.port !== undefined ? o.port : config.github.enabled && repo ? new GhAdapter(repo) : null;
   return new Engine({
     root: o.root, store, config, registry: loadRegistry(o.root), git, runtime: o.runtime, github: new GithubSync(store, port), port,
-    detected: detectRepo(o.root), builtins: { ...coreBuiltins, 'reproduction-proven': reproductionProven, ...o.extraBuiltins }, clock: o.clock, exec: o.exec, logger: o.logger,
+    detected: detectRepo(o.root), builtins: { ...coreBuiltins, 'reproduction-proven': reproductionProven, 'ac-traceability': acTraceability, ...blueprintBuiltins, ...o.extraBuiltins }, clock: o.clock, exec: o.exec, logger: o.logger,
   });
 }

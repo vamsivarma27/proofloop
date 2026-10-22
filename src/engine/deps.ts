@@ -7,6 +7,7 @@ import { type BuiltinOutcome, type GateRunCtx, environmentLabel } from '../gates
 import type { GithubPort, GithubSync } from '../github/adapter';
 import type { Git } from '../git/git';
 import { type CommandPolicy, tokenize } from '../policy/command';
+import { startApp } from '../browser/app';
 import type { ProtocolRegistry } from '../protocol/registry';
 import type { DetectedRepo } from '../repo/detect';
 import { type Clock, systemClock } from '../shared/clock';
@@ -57,7 +58,11 @@ export function policyFor(d: EngineDeps, runId: string): CommandPolicy {
 }
 
 export function gateCtx(d: EngineDeps, runId: string, cwd: string, commitSha: string): GateRunCtx {
+  const app = d.config.app;
+  const policy = policyFor(d, runId);
   return {
+    ...(app.start && app.url ? { startApp: () => startApp({ cwd, start: app.start!, url: app.url!, seed: app.seed, timeoutMs: app.startTimeoutMs, policy: { allowed: [...policy.allowed, ...[app.start!, ...(app.seed ? [app.seed] : [])].map(tokenize)] }, exec: d.exec }) } : {}),
+    personas: app.personas, artifactDirs: app.artifactDirs, resultsFile: app.resultsFile,
     store: d.store, runId, cwd, commitSha, policy: policyFor(d, runId), git: d.git, artifactDir: artifactDir(d), timeoutMs: d.config.limits.gateTimeoutMs,
     environment: environmentLabel(d.config.environment), clock: clockOf(d), exec: d.exec, builtins: d.builtins,
   };

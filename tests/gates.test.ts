@@ -78,8 +78,11 @@ describe('gate runner', () => {
 
   it('BLOCKED on a dirty tree or a moved HEAD: evidence must map to the commit', async () => {
     const { ctx, entry, root, git } = await setup();
-    write(root, 'dirty.txt', 'x');
+    write(root, 'a.txt', 'changed\n');
     expect(await runGate(ctx, entry('node -e "0"'))).toMatchObject({ state: 'BLOCKED', failureCategory: 'dirty-tree' });
+    await git.run(root, ['checkout', '--', 'a.txt']);
+    write(root, 'untracked-output.txt', 'x'); // build/test outputs do not invalidate evidence
+    expect((await runGate(ctx, entry('node -e "0"'))).state).toBe('PASS');
     await git.commitAll(root, 'feat: more');
     expect(await runGate(ctx, entry('node -e "0"'))).toMatchObject({ state: 'BLOCKED', failureCategory: 'commit-mismatch' });
   });

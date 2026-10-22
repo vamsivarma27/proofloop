@@ -9,6 +9,8 @@ import { redact, scrubbedEnv } from '../shared/redact';
 import type { GateResultRow, Store } from '../state/store';
 import { ENGINE_GATE_IDS, type GateState } from '../state/machine';
 import type { GatePlanEntry } from './plan';
+import { type AppHandle } from '../browser/app';
+import { hashDir } from '../browser/playwright';
 
 export interface BuiltinOutcome {
   state: GateState;
@@ -31,6 +33,12 @@ export interface GateRunCtx {
   exec?: Exec;
   builtins?: Record<string, (ctx: GateRunCtx) => Promise<BuiltinOutcome>>;
   extraEnv?: Record<string, string>;
+  /** Starts the application for browser gates; failure makes the gate BLOCKED. */
+  startApp?: () => Promise<AppHandle>;
+  personas?: readonly string[];
+  artifactDirs?: readonly string[];
+  /** Playwright JSON report (relative to cwd) used to map executed tests to acceptance criteria. */
+  resultsFile?: string | undefined;
 }
 
 export const environmentLabel = (kind: string): string => `${kind}; ${process.platform}-${process.arch}; node ${process.version}`;
@@ -73,7 +81,7 @@ export async function runGate(ctx: GateRunCtx, entry: GatePlanEntry): Promise<Ga
   if (!entry.command) return blocked(ctx, entry, started, 'command-not-detected', `no command for gate "${entry.gateId}" could be detected or configured`);
   const head = await ctx.git.head(ctx.cwd);
   if (head !== ctx.commitSha) return blocked(ctx, entry, started, 'commit-mismatch', `worktree HEAD ${head.slice(0, 8)} is not the candidate commit ${ctx.commitSha.slice(0, 8)}`);
-  if (!(await ctx.git.isClean(ctx.cwd))) return blocked(ctx, entry, started, 'dirty-tree', 'uncommitted changes: evidence must map to a commit');
+  if (await ctx.git.hasTrackedChanges(ctx.cwd)) return blocked(ctx, entry, started, 'dirty-tree', 'tracked files differ from the candidate commit: evidence must map to a commit');
 
   if (entry.command.startsWith('builtin:')) {
     const fn = ctx.builtins?.[entry.command.slice('builtin:'.length)];
@@ -89,14 +97,67 @@ export async function runGate(ctx: GateRunCtx, entry: GatePlanEntry): Promise<Ga
     return blocked(ctx, entry, started, 'policy-denied', `command refused by policy (${decision.cls}): ${decision.reason}`);
   }
 
-  const [bin, ...args] = decision.argv;
-  const run = await (ctx.exec ?? nodeExec)(bin!, args, { cwd: ctx.cwd, timeoutMs: ctx.timeoutMs, env: { ...scrubbedEnv(process.env), ...ctx.extraEnv } });
-  const output = `${run.stdout}${run.stderr ? `\n--- stderr ---\n${run.stderr}` : ''}${run.truncated ? '\n[output truncated]' : ''}`;
-  const base = { command: entry.command, output, started, exitCode: run.code };
-  if (run.spawnError) return record(ctx, entry, { ...base, state: 'BLOCKED', summary: `could not start "${bin}" (${run.spawnError})`, category: 'executable-missing' });
-  if (run.timedOut) return record(ctx, entry, { ...base, state: 'FAIL', summary: `timed out after ${ctx.timeoutMs}ms`, category: 'timeout', fingerprint: failureFingerprint(output) });
-  if (run.code === 0) return record(ctx, entry, { ...base, state: 'PASS', summary: 'exit 0' });
-  return record(ctx, entry, { ...base, state: 'FAIL', summary: `exit ${run.code}`, category: 'nonzero-exit', fingerprint: failureFingerprint(output) });
+  return execute(ctx, entry, decision.argv, started);
+}
+
+const ENV_FAILURE = /browserType\.launch|Executable doesn't exist|npx playwright install|ECONNREFUSED|net::ERR_CONNECTION_REFUSED|Target page, context or browser has been closed/i;
+
+interface Attempt {
+  persona?: string;
+  run: Awaited<ReturnType<Exec>>;
+  output: string;
+}
+
+async function execute(ctx: GateRunCtx, entry: GatePlanEntry, argv: string[], started: string): Promise<GateResultRow> {
+  const [bin, ...args] = argv;
+  const browser = entry.kind === 'browser';
+  let app: AppHandle | null = null;
+  if (browser && ctx.startApp) {
+    try {
+      app = await ctx.startApp();
+    } catch (e) {
+      return blocked(ctx, entry, started, 'app-start-failed', e instanceof Error ? e.message : String(e));
+    }
+  }
+  const attempts: Attempt[] = [];
+  try {
+    for (const persona of browser && ctx.personas?.length ? ctx.personas : [undefined]) {
+      const env = { ...scrubbedEnv(process.env), ...ctx.extraEnv, ...(app ? { APP_URL: app.url } : {}), ...(persona ? { PROOFLOOP_PERSONA: persona } : {}) };
+      const run = await (ctx.exec ?? nodeExec)(bin!, args, { cwd: ctx.cwd, timeoutMs: ctx.timeoutMs, env });
+      const output = `${run.stdout}${run.stderr ? `\n--- stderr ---\n${run.stderr}` : ''}${run.truncated ? '\n[output truncated]' : ''}`;
+      attempts.push({ persona, run, output });
+    }
+  } finally {
+    await app?.stop();
+  }
+  return finish(ctx, entry, attempts, started);
+}
+
+function judge(a: Attempt, entry: GatePlanEntry, ctx: GateRunCtx): { state: GateState; summary: string; category?: string } {
+  const { run, output } = a;
+  const who = a.persona ? `[${a.persona}] ` : '';
+  if (run.spawnError) return { state: 'BLOCKED', summary: `${who}could not start (${run.spawnError})`, category: 'executable-missing' };
+  if (run.timedOut) return { state: 'FAIL', summary: `${who}timed out after ${ctx.timeoutMs}ms`, category: 'timeout' };
+  if (run.code === 0) return { state: 'PASS', summary: `${who}exit 0` };
+  if (entry.kind === 'browser' && ENV_FAILURE.test(output)) return { state: 'BLOCKED', summary: `${who}browser or test environment unavailable`, category: 'environment' };
+  return { state: 'FAIL', summary: `${who}exit ${run.code}`, category: 'nonzero-exit' };
+}
+
+const RANK: Record<GateState, number> = { PASS: 0, BLOCKED: 1, FAIL: 2 };
+
+function finish(ctx: GateRunCtx, entry: GatePlanEntry, attempts: Attempt[], started: string): GateResultRow {
+  const judged = attempts.map((a) => ({ a, j: judge(a, entry, ctx) }));
+  const worst = judged.reduce((w, x) => (RANK[x.j.state] > RANK[w.j.state] ? x : w));
+  const output = judged.map(({ a, j }) => `${a.persona ? `=== persona ${a.persona}: ${j.state} ===\n` : ''}${a.output}`).join('\n');
+  const extra = (ctx.artifactDirs ?? []).flatMap((d) => {
+    const checksum = hashDir(join(ctx.cwd, d));
+    return checksum ? [{ kind: 'browser-artifacts', uri: join(ctx.cwd, d), checksum }] : [];
+  });
+  return record(ctx, entry, {
+    state: worst.j.state, exitCode: worst.a.run.code, summary: judged.length > 1 ? judged.map(({ j }) => j.summary).join('; ') : worst.j.summary, category: worst.j.category, output, started,
+    command: `${entry.command}${ctx.personas?.length && entry.kind === 'browser' ? ` (personas: ${ctx.personas.join(', ')})` : ''}`, extra,
+    fingerprint: worst.j.state === 'FAIL' ? failureFingerprint(output) : undefined,
+  });
 }
 
 export async function runGates(ctx: GateRunCtx, entries: readonly GatePlanEntry[]): Promise<GateResultRow[]> {

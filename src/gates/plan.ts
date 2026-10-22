@@ -55,3 +55,5 @@ export function buildGatePlan(
 
 /** Engine-added gate, always required: tests may not be weakened to get green. */
 export const TEST_INTEGRITY_GATE: GatePlanEntry = { gateId: 'test-integrity', kind: 'custom', required: true, command: 'builtin:test-integrity', source: 'builtin' };
+
+export const AC_TRACEABILITY_GATE: GatePlanEntry = { gateId: 'ac-traceability', kind: 'custom', required: true, command: 'builtin:ac-traceability', source: 'builtin' };
