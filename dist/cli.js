@@ -28071,6 +28071,7 @@ function validatePlan(input2, opts = {}) {
   if (riskRank(plan.risk.level) < riskRank(floor)) errors.push(`plan risk "${plan.risk.level}" is below the engine-computed minimum "${floor}" for the affected paths; agents cannot lower risk`);
   if (opts.protocolId === "bug" && !plan.regressionTest) errors.push("bug plans need a regressionTest (file + command)");
   if (opts.protocolId === "bug" && !plan.reproduction) errors.push("bug plans need a reproduction record (reproducible: yes|no|unknown)");
+  if (opts.protocolId === "bug" && !(plan.rootCause?.confirmed || plan.rootCause?.uncertainty)) errors.push("bug plans need a rootCause with a confirmed cause or an explicit uncertainty");
   if (errors.length === 0) {
     for (let i = 0; i < plan.tasks.length; i++)
       for (let j = i + 1; j < plan.tasks.length; j++) {
@@ -28145,7 +28146,8 @@ var init_schema2 = __esm({
       /** Commands the human approves with the plan; each still passes command policy at run time. */
       gateCommands: external_exports.record(external_exports.string(), external_exports.string()).default({}),
       reproduction: external_exports.strictObject({ steps: external_exports.string(), observed: external_exports.string(), expected: external_exports.string(), reproducible: external_exports.enum(["yes", "no", "unknown"]) }).optional(),
-      regressionTest: external_exports.strictObject({ file: external_exports.string(), command: external_exports.string() }).optional()
+      regressionTest: external_exports.strictObject({ file: external_exports.string(), command: external_exports.string() }).optional(),
+      rootCause: external_exports.strictObject({ hypotheses: external_exports.array(external_exports.string().min(3)).min(1), confirmed: external_exports.string().min(3).optional(), uncertainty: external_exports.string().min(3).optional() }).optional()
     });
     dup = (ids) => ids.filter((x, i) => ids.indexOf(x) !== i);
   }
@@ -28208,12 +28210,12 @@ var init_workflow = __esm({
 });
 
 // src/cli/main.ts
-import { closeSync, openSync, readFileSync as readFileSync11, readSync } from "node:fs";
+import { closeSync, openSync, readFileSync as readFileSync12, readSync } from "node:fs";
 
 // src/cli/index.ts
 import { parseArgs } from "node:util";
-import { existsSync as existsSync12, mkdirSync as mkdirSync5, readFileSync as readFileSync10, writeFileSync as writeFileSync3 } from "node:fs";
-import { dirname as dirname5, join as join12, resolve as resolve2 } from "node:path";
+import { existsSync as existsSync12, mkdirSync as mkdirSync7, readFileSync as readFileSync11, writeFileSync as writeFileSync5 } from "node:fs";
+import { dirname as dirname5, join as join14, resolve as resolve2 } from "node:path";
 
 // src/shared/exec.ts
 import { execFile } from "node:child_process";
@@ -29109,7 +29111,7 @@ var TABLE = {
   CANCELLED: []
 };
 var isAllowedTransition = (from, to) => TABLE[from].includes(to);
-var ENGINE_GATE_IDS = ["test-integrity", "reproduction-proven", "ac-traceability"];
+var ENGINE_GATE_IDS = ["test-integrity", "reproduction-proven", "ac-traceability", "required-artifacts", "migration-readiness"];
 var ok = { ok: true };
 var deny = (code, reason) => ({ ok: false, code, reason });
 function approvalValid(ctx) {
@@ -29767,6 +29769,10 @@ var blocked2 = (ctx, entry, started, category, summary) => record2(ctx, entry, {
 async function runGate(ctx, entry) {
   const started = ctx.clock.nowIso();
   if (!entry.command) return blocked2(ctx, entry, started, "command-not-detected", `no command for gate "${entry.gateId}" could be detected or configured`);
+  if (ctx.environmentKind === "production" && !ctx.store.hasGatedApproval(ctx.runId, `production:${entry.gateId}`)) {
+    ctx.store.audit(ctx.runId, "policy.denied", "engine", { gate: entry.gateId, class: "production", reason: "production environment requires explicit approval immediately before the action" });
+    return blocked2(ctx, entry, started, "production-environment", `gate ${entry.gateId} would act against a production environment; grant scope "production:${entry.gateId}" explicitly`);
+  }
   const head = await ctx.git.head(ctx.cwd);
   if (head !== ctx.commitSha) return blocked2(ctx, entry, started, "commit-mismatch", `worktree HEAD ${head.slice(0, 8)} is not the candidate commit ${ctx.commitSha.slice(0, 8)}`);
   if (await ctx.git.hasTrackedChanges(ctx.cwd)) return blocked2(ctx, entry, started, "dirty-tree", "tracked files differ from the candidate commit: evidence must map to a commit");
@@ -29907,6 +29913,7 @@ function gateCtx(d, runId, cwd, commitSha) {
     personas: app.personas,
     artifactDirs: app.artifactDirs,
     resultsFile: app.resultsFile,
+    environmentKind: d.config.environment,
     store: d.store,
     runId,
     cwd,
@@ -29957,9 +29964,9 @@ async function recordReproduction(d, run, plan, cwd) {
 ${r.stdout}
 ${r.stderr}`);
   const uri = join7(d.root, ".proofloop", "artifacts", run.id, `reproduction-${head.slice(0, 8)}.log`);
-  const { mkdirSync: mkdirSync6, writeFileSync: writeFileSync4 } = await import("node:fs");
-  mkdirSync6(join7(uri, ".."), { recursive: true });
-  writeFileSync4(uri, log);
+  const { mkdirSync: mkdirSync8, writeFileSync: writeFileSync6 } = await import("node:fs");
+  mkdirSync8(join7(uri, ".."), { recursive: true });
+  writeFileSync6(uri, log);
   d.store.addEvidence({ taskRunId: run.id, gateId: "reproduction-proven", kind: "reproduction", uri, checksum: sha256(log), commitSha: head, environment: environmentOf(d), summary: `${state}: regression test ${state === "FAIL" ? "fails before the fix" : "already passes before the fix"}`, redactionStatus: "redacted" });
 }
 async function reproductionProven(ctx) {
@@ -30318,8 +30325,162 @@ function resultsOutcome(ctx, acIds) {
   return { state: "PASS", summary: unexecuted.length ? `no tagged browser test executed for ${unexecuted.join(", ")}` : "tagged browser tests passed" };
 }
 
+// src/gates/artifacts.ts
+import { mkdirSync as mkdirSync5, readFileSync as readFileSync6, writeFileSync as writeFileSync3 } from "node:fs";
+import { join as join9 } from "node:path";
+
+// src/perf/report.ts
+init_zod();
+var MIN_SAMPLES = 30;
+var MIN_IMPROVEMENT = 0.05;
+var measurementSchema = external_exports.strictObject({
+  phase: external_exports.enum(["baseline", "after"]),
+  /** simulated = synthetic load against a test environment; live-observation = measured in production. Never mixed. */
+  kind: external_exports.enum(["simulated", "live-observation"]),
+  environment: external_exports.string().min(3),
+  workload: external_exports.strictObject({ description: external_exports.string().min(5), dataset: external_exports.string().min(2), concurrency: external_exports.number().int().positive().optional() }),
+  target: external_exports.strictObject({ metric: external_exports.enum(["p50", "p95", "p99", "mean", "errorRate", "throughput"]), comparator: external_exports.enum(["<=", ">="]), value: external_exports.number(), unit: external_exports.enum(["ms", "rps", "ratio"]) }),
+  commit: external_exports.string().min(7),
+  capturedAt: external_exports.string(),
+  /** Raw samples (preferred) or a tool-provided summary (e.g. k6) with its own sample count. */
+  samples: external_exports.array(external_exports.number().finite()).optional(),
+  summary: external_exports.strictObject({ n: external_exports.number().int().positive(), p50: external_exports.number().optional(), p95: external_exports.number().optional(), p99: external_exports.number().optional(), mean: external_exports.number().optional(), errorRate: external_exports.number().optional(), throughput: external_exports.number().optional() }).optional()
+});
+var rank = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p / 100 * sorted.length) - 1))];
+function summarize(samples) {
+  const s = [...samples].sort((a, b) => a - b);
+  return { n: s.length, min: s[0], max: s.at(-1), mean: s.reduce((a, b) => a + b, 0) / s.length, p50: rank(s, 50), p95: rank(s, 95), p99: rank(s, 99) };
+}
+function metricOf(m) {
+  const metric = m.target.metric;
+  if (m.samples && m.samples.length > 0 && metric !== "errorRate" && metric !== "throughput") return summarize(m.samples)[metric];
+  return m.summary?.[metric] ?? null;
+}
+var sampleCount = (m) => m.samples?.length ?? m.summary?.n ?? 0;
+var better = (cmp, from, to) => cmp === "<=" ? (from - to) / from : (to - from) / from;
+function evaluatePerformance(baseline, after, minSamples = MIN_SAMPLES) {
+  if (!baseline) return { kind: "INVALID", reason: "no baseline: measure before optimizing" };
+  if (!after) return { kind: "INVALID", reason: "no after-change measurement" };
+  if (JSON.stringify(baseline.workload) !== JSON.stringify(after.workload)) return { kind: "INVALID", reason: "workload differs between baseline and after; the comparison is not valid" };
+  if (JSON.stringify(baseline.target) !== JSON.stringify(after.target)) return { kind: "INVALID", reason: "target differs between baseline and after" };
+  if (baseline.kind !== after.kind) return { kind: "INVALID", reason: `cannot compare ${baseline.kind} with ${after.kind} measurements` };
+  if (baseline.environment !== after.environment) return { kind: "INVALID", reason: `environment differs (${baseline.environment} vs ${after.environment})` };
+  for (const [label, m] of [["baseline", baseline], ["after", after]]) if (sampleCount(m) < minSamples) return { kind: "INVALID", reason: `${label} has ${sampleCount(m)} samples; at least ${minSamples} are required (one run proves nothing)` };
+  const b = metricOf(baseline);
+  const a = metricOf(after);
+  if (b === null || a === null || b === 0) return { kind: "INVALID", reason: `metric ${baseline.target.metric} is not available in the recorded data` };
+  const improvement = better(after.target.comparator, b, a);
+  const met = after.target.comparator === "<=" ? a <= after.target.value : a >= after.target.value;
+  const base = { baseline: b, after: a, improvement };
+  if (improvement < -MIN_IMPROVEMENT) return { kind: "REGRESSION", ...base };
+  if (improvement < MIN_IMPROVEMENT) return { kind: "NO_SIGNIFICANT_CHANGE", ...base };
+  return { kind: met ? "TARGET_MET" : "TARGET_NOT_MET", ...base };
+}
+function fromK6Summary(json2, ctx) {
+  const m = json2.metrics ?? {};
+  const dur = m.http_req_duration ?? {};
+  const n = m.http_reqs?.count ?? 0;
+  return measurementSchema.parse({
+    ...ctx,
+    kind: "simulated",
+    summary: { n, p50: dur.med, p95: dur["p(95)"], p99: dur["p(99)"], mean: dur.avg, errorRate: m.http_req_failed?.value, throughput: m.http_reqs?.rate }
+  });
+}
+
+// src/gates/artifacts.ts
+init_errors3();
+init_hash();
+var NAME = /^[a-z][a-z0-9-]{1,50}$/;
+function addArtifact(store, runId, a) {
+  if (!NAME.test(a.name)) throw new PlError("PL_ARTIFACT_001", "artifact names are lowercase kebab-case");
+  const dir = join9(a.artifactDir, runId);
+  mkdirSync5(dir, { recursive: true });
+  const content = redact(a.content);
+  const uri = join9(dir, `${a.name}-${store.evidenceFor(runId).length + 1}.txt`);
+  writeFileSync3(uri, content);
+  return store.addEvidence({ taskRunId: runId, kind: a.kind ?? `artifact:${a.name}`, uri, checksum: sha256(content), commitSha: a.commitSha, environment: a.environment ?? "recorded", summary: (a.summary ?? a.name).slice(0, 300), redactionStatus: "redacted" });
+}
+var DERIVED = {
+  "intent-brief": (b) => Boolean(b.intent),
+  "impact-map": (b) => Boolean(b.affectedModules?.length),
+  "blast-radius-map": (b) => Boolean(b.affectedModules?.length),
+  "acceptance-criteria": (b) => Boolean(b.acceptanceCriteria?.length),
+  "implementation-plan": (b) => Boolean(b.tasks?.length),
+  "dependency-graph": (b) => Boolean(b.tasks?.length),
+  "test-plan": (b) => Boolean(b.testPlan?.length),
+  "regression-plan": (b) => Boolean(b.testPlan?.length),
+  scope: (b) => Boolean(b.tasks?.every((t) => t.fileScopes.length)),
+  "approved-plan-record": (_b, s, id3) => Boolean(s.getRun(id3).approvedPlanHash) && s.getRun(id3).approvedPlanHash === s.getRun(id3).currentPlanHash,
+  "reproduction-result": (_b, s, id3) => s.evidenceFor(id3).some((e) => e.kind === "reproduction"),
+  "root-cause": (b) => Boolean(b.rootCause?.confirmed || b.rootCause?.uncertainty),
+  "regression-test": (b) => Boolean(b.regressionTest),
+  "verification-report": () => true,
+  "product-blueprint": (b) => Boolean(b.idea),
+  roadmap: (b) => Boolean(b.roadmap),
+  "risk-register": (b) => Boolean(b.risks?.length),
+  adr: (b) => Boolean(b.architecture?.stack?.length),
+  baseline: (_b, s, id3) => s.evidenceFor(id3).some((e) => e.kind === "perf-baseline"),
+  "before-after-result": (_b, s, id3) => s.evidenceFor(id3).some((e) => e.kind === "perf-after")
+};
+function missingArtifacts(store, runId, required2) {
+  const body2 = store.getPlanBody(runId) ?? {};
+  const recorded = new Set(store.evidenceFor(runId).map((e) => String(e.kind)));
+  return required2.filter((name) => !(recorded.has(`artifact:${name}`) || DERIVED[name]?.(body2, store, runId)));
+}
+var requiredArtifactsBuiltin = (required2) => async (ctx) => {
+  const missing = missingArtifacts(ctx.store, ctx.runId, required2);
+  return missing.length === 0 ? { state: "PASS", summary: `all ${required2.length} required artifacts are present` } : { state: "BLOCKED", category: "missing-artifacts", summary: `missing required artifacts: ${missing.join(", ")}. Record each with \`proofloop artifact add <run> <name> --file <path>\`` };
+};
+var MIGRATION_PATH = /(^|\/)migrations?\/|\.sql$|(^|\/)schema\.[a-z]+$/i;
+var DESTRUCTIVE_SQL = /\b(drop\s+(table|column|database|schema|index)|truncate\s+(table\s+)?\w+|delete\s+from\s+\w+(?!.*where))/i;
+var DESTRUCTIVE_MIGRATION_SCOPE = "destructive-migration";
+async function migrationReadiness(ctx) {
+  const base = ctx.store.getRun(ctx.runId).baseCommit;
+  if (!base) return { state: "BLOCKED", category: "no-base", summary: "no base commit to compare migrations against" };
+  const files = (await ctx.git.changedFiles(ctx.cwd, base)).filter((f) => MIGRATION_PATH.test(f));
+  if (files.length === 0) return { state: "PASS", summary: "no migration or schema files changed" };
+  const diff = await ctx.git.diff(ctx.cwd, base);
+  const added = diff.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).join("\n");
+  const destructive = DESTRUCTIVE_SQL.test(added);
+  if (destructive && !ctx.store.hasGatedApproval(ctx.runId, DESTRUCTIVE_MIGRATION_SCOPE)) return { state: "FAIL", category: "destructive-migration-unapproved", summary: `destructive SQL in ${files.join(", ")} needs an explicit human approval (scope ${DESTRUCTIVE_MIGRATION_SCOPE}); never run against production` };
+  const notes = ctx.store.evidenceFor(ctx.runId).some((e) => e.kind === "artifact:rollback-notes");
+  return notes ? { state: "PASS", summary: `migration files ${files.join(", ")} have rollback notes${destructive ? " and an approved destructive change" : ""}` } : { state: "BLOCKED", category: "missing-artifacts", summary: `migration files changed (${files.join(", ")}) but no rollback notes were recorded: rollback is more than reverting a commit when data changes are irreversible` };
+}
+function loadMeasurement(store, runId, kind) {
+  const ev = store.evidenceFor(runId).filter((e) => e.kind === kind).at(-1);
+  if (!ev) return void 0;
+  const parsed = measurementSchema.safeParse(JSON.parse(readFileSync6(String(ev.uri), "utf8")));
+  return parsed.success ? parsed.data : void 0;
+}
+async function baselineRecorded(ctx) {
+  const b = loadMeasurement(ctx.store, ctx.runId, "perf-baseline");
+  const run = ctx.store.getRun(ctx.runId);
+  if (!b) return { state: "BLOCKED", category: "no-baseline", summary: "no valid baseline with workload, target and samples was recorded before optimizing" };
+  if (run.baseCommit && !run.baseCommit.startsWith(b.commit) && !b.commit.startsWith(run.baseCommit)) return { state: "BLOCKED", category: "stale-baseline", summary: `baseline was measured at ${b.commit.slice(0, 8)}, not the base commit ${run.baseCommit.slice(0, 8)}` };
+  return { state: "PASS", summary: `baseline recorded (${b.kind}, ${b.environment})` };
+}
+async function beforeAfter(ctx) {
+  const run = ctx.store.getRun(ctx.runId);
+  const after = loadMeasurement(ctx.store, ctx.runId, "perf-after");
+  if (after && run.headSha && !run.headSha.startsWith(after.commit) && !after.commit.startsWith(run.headSha)) return { state: "BLOCKED", category: "stale-measurement", summary: `after-measurement is for ${after.commit.slice(0, 8)}, not the candidate ${run.headSha.slice(0, 8)}` };
+  const v = evaluatePerformance(loadMeasurement(ctx.store, ctx.runId, "perf-baseline"), after);
+  const label = after ? `${after.kind} measurement in ${after.environment}` : "no measurement";
+  switch (v.kind) {
+    case "TARGET_MET":
+      return { state: "PASS", summary: `target met: ${v.baseline.toFixed(1)} -> ${v.after.toFixed(1)} (${(v.improvement * 100).toFixed(0)}% better), ${label}` };
+    case "TARGET_NOT_MET":
+      return { state: "FAIL", category: "target-not-met", summary: `improved ${(v.improvement * 100).toFixed(0)}% but the stated target was not met (${v.after.toFixed(1)}); ${label}` };
+    case "NO_SIGNIFICANT_CHANGE":
+      return { state: "FAIL", category: "no-improvement", summary: `change within noise (${(v.improvement * 100).toFixed(1)}%); no performance claim is supported` };
+    case "REGRESSION":
+      return { state: "FAIL", category: "perf-regression", summary: `performance regressed ${(-v.improvement * 100).toFixed(0)}%` };
+    case "INVALID":
+      return { state: "BLOCKED", category: "invalid-measurement", summary: v.reason };
+  }
+}
+
 // src/engine/engine.ts
-import { basename as basename2, join as join11 } from "node:path";
+import { basename as basename2, join as join12 } from "node:path";
 import { existsSync as existsSync11 } from "node:fs";
 
 // src/gates/plan.ts
@@ -30343,6 +30504,8 @@ function buildGatePlan(protocol, risk, detected, config2, planCommands = {}) {
 }
 var TEST_INTEGRITY_GATE = { gateId: "test-integrity", kind: "custom", required: true, command: "builtin:test-integrity", source: "builtin" };
 var AC_TRACEABILITY_GATE = { gateId: "ac-traceability", kind: "custom", required: true, command: "builtin:ac-traceability", source: "builtin" };
+var REQUIRED_ARTIFACTS_GATE = { gateId: "required-artifacts", kind: "custom", required: true, command: "builtin:required-artifacts", source: "builtin" };
+var MIGRATION_GATE = { gateId: "migration-readiness", kind: "custom", required: true, command: "builtin:migration-readiness", source: "builtin" };
 
 // src/engine/engine.ts
 init_hash();
@@ -30350,7 +30513,7 @@ init_errors3();
 
 // src/engine/report.ts
 init_hash();
-import { existsSync as existsSync8, readFileSync as readFileSync6 } from "node:fs";
+import { existsSync as existsSync8, readFileSync as readFileSync7 } from "node:fs";
 function verifyEvidenceIntegrity(store, runId) {
   const run = store.getRun(runId);
   const problems = [];
@@ -30366,7 +30529,7 @@ function verifyEvidenceIntegrity(store, runId) {
       if (e.commit_sha !== run.headSha) problems.push({ evidenceId: id3, problem: `evidence is for ${String(e.commit_sha).slice(0, 8)}, not the candidate ${run.headSha?.slice(0, 8)}` });
       const uri = String(e.uri);
       if (!existsSync8(uri)) problems.push({ evidenceId: id3, problem: `artifact file missing: ${uri}` });
-      else if (sha256(readFileSync6(uri)) !== e.checksum) problems.push({ evidenceId: id3, problem: `checksum mismatch for ${uri}` });
+      else if (sha256(readFileSync7(uri)) !== e.checksum) problems.push({ evidenceId: id3, problem: `checksum mismatch for ${uri}` });
     }
   }
   return problems;
@@ -30377,7 +30540,7 @@ function renderReport(store, runId, opts = {}) {
   const plan = store.getPlanBody(runId);
   const history = store.events(runId, "transition");
   const L = [];
-  L.push(`# ProofLoop report \u2014 ${run.protocolId} (${run.id})`, "", `- State: **${run.state}**${run.blockedReason ? ` \u2014 ${run.blockedReason}` : ""}`, `- Protocol: ${run.protocolId}@${run.protocolVersion}, engine ${run.engineVersion}`, `- Risk: ${run.risk}`);
+  L.push(`# ProofLoop report \u2014 ${run.protocolId} (${run.id})`, "", `- State: **${run.state}**${run.blockedReason ? ` \u2014 ${run.blockedReason}` : ""}`, `- Protocol: ${run.protocolId}@${run.protocolVersion} (sha256 ${String(store.events(runId, "protocol.pinned")[0]?.data.sha256 ?? "n/a").slice(0, 12)}), plugin/engine ${run.engineVersion}`, `- Risk: ${run.risk}`);
   L.push(`- Base: \`${run.baseCommit?.slice(0, 12) ?? "n/a"}\`, candidate: \`${run.headSha?.slice(0, 12) ?? "n/a"}\`, branch: \`${run.activeBranch ?? "n/a"}\``);
   L.push(`- Plan: v${run.planVersion} \`${run.currentPlanHash?.slice(0, 12) ?? "none"}\`, approved: ${run.approvedPlanHash === run.currentPlanHash && run.approvedPlanHash ? "yes" : "**no**"}`, "");
   const intent = plan?.intent?.summary ?? plan?.idea?.oneLine;
@@ -30408,6 +30571,22 @@ function limitations(store, runId, plan) {
   for (const e of store.events(runId, "review.finding").filter((x) => x.data.commit === head)) out.push(`reviewer finding (${String(e.data.severity)}): ${String(e.data.summary)}`);
   for (const e of store.events(runId, "scope.reverted")) out.push(`out-of-scope edits were reverted: ${e.data.files.join(", ")}`);
   return out;
+}
+function renderReadiness(store, runId) {
+  const run = store.getRun(runId);
+  const rep = gateReport(store, runId);
+  const ev = store.evidenceFor(runId);
+  const L = [`# Operational readiness \u2014 ${run.id}`, "", `Risk ${run.risk}; candidate \`${run.headSha?.slice(0, 12) ?? "n/a"}\`. This summarizes recorded evidence only.`, ""];
+  L.push("## Quality and security gates", ...rep.gates.map((g) => `- ${g.gateId}: ${g.state}${g.stale ? " (stale)" : ""}`), "");
+  const perf = ev.filter((e) => e.kind === "perf-baseline" || e.kind === "perf-after");
+  L.push("## Performance evidence", ...perf.length ? perf.map((e) => `- ${e.kind}: ${String(e.summary)} [${String(e.environment)}]`) : ["- none recorded; no performance or scalability claim is supported"], "");
+  const kinds = new Set(perf.map((e) => String(e.environment).split(";")[0]));
+  if (kinds.has("simulated")) L.push("Note: simulated measurements come from synthetic load in a test environment, not production.", "");
+  if (kinds.has("live-observation")) L.push("Note: live observations come from a running environment and are not load-test results.", "");
+  const art = ev.filter((e) => String(e.kind).startsWith("artifact:")).map((e) => String(e.kind).slice(9));
+  L.push("## Recorded artifacts", ...art.length ? [...new Set(art)].map((a) => `- ${a}`) : ["- none"], "", "## Open limitations", ...limitations(store, runId, store.getPlanBody(runId)).map((x) => `- ${x}`));
+  return `${L.join("\n")}
+`;
 }
 
 // src/blueprint/publish.ts
@@ -30450,7 +30629,7 @@ Roadmap for this product. Milestones are linked as sub-issues.`, ["roadmap"]);
 }
 
 // src/engine/scheduler.ts
-import { join as join9 } from "node:path";
+import { join as join10 } from "node:path";
 
 // src/shared/proc.ts
 function isPidAlive(pid) {
@@ -30516,7 +30695,7 @@ ${wrapUntrusted("file-hypotheses", a.files.map((f) => f.path).join("\n") || "(no
 Inspect the repository (read-only), then output ONE plan object matching the provided JSON schema.
 Mark affected modules "confirmed" only if you read them; otherwise "hypothesis". List unconfirmed assumptions honestly.
 Every acceptance criterion needs an executable test or a documented manual check. Keep tasks small; give each task explicit fileScopes.
-${a.protocol.id === "bug" ? "This is a bug: include reproduction (reproducible yes/no/unknown) and a regressionTest {file, command} that fails before the fix.\n" : ""}${a.priorErrors?.length ? `
+${a.protocol.id === "bug" ? "This is a bug: include reproduction (reproducible yes/no/unknown) and a regressionTest {file, command} that fails before the fix, and a rootCause (confirmed cause, or an explicit uncertainty). The FIRST task must only add the regression test.\n" : ""}${a.priorErrors?.length ? `
 Your previous plan was rejected by validation:
 - ${a.priorErrors.join("\n- ")}
 Fix exactly these problems.
@@ -30659,7 +30838,7 @@ async function runSequential(d, run, plan, node2) {
 }
 async function runInWorktree(d, run, plan, node2) {
   const branch = `${run.activeBranch}--${node2.id}`;
-  const dir = join9(worktreeRoot(d, run.id), node2.id);
+  const dir = join10(worktreeRoot(d, run.id), node2.id);
   const wt = await d.git.createWorktree(run.worktreePath, branch, run.activeBranch, dir);
   d.store.setNodeState(run.id, node2.id, "RUNNING");
   const out = await withLease(d, run.id, node2.id, { worktreePath: wt.path, branch }, () => runTask(d, run, plan, node2, wt.path));
@@ -30727,13 +30906,13 @@ async function parallelStep(d, run, plan, batch) {
 }
 
 // src/engine/steps-plan.ts
-import { existsSync as existsSync10, readFileSync as readFileSync8, appendFileSync as appendFileSync2 } from "node:fs";
-import { join as join10 } from "node:path";
+import { existsSync as existsSync10, readFileSync as readFileSync9, appendFileSync as appendFileSync2 } from "node:fs";
+import { join as join11 } from "node:path";
 init_schema();
 init_workflow();
 
 // src/repo/context.ts
-import { readFileSync as readFileSync7, statSync as statSync2 } from "node:fs";
+import { readFileSync as readFileSync8, statSync as statSync2 } from "node:fs";
 init_errors3();
 init_paths();
 var CONTEXT_LIMITS = { files: 200, matches: 50, lines: 200, lineChars: 300, bytes: 64 * 1024, history: 20 };
@@ -30771,7 +30950,7 @@ var RepoContext = class {
     const ok2 = checkPath(this.root, path, "read");
     if (!ok2.ok) throw new PlError("PL_CONTEXT_002", ok2.reason);
     if (statSync2(ok2.resolved).size > 5 * 1024 * 1024) throw new PlError("PL_CONTEXT_003", `${path} is too large to read; use searchText`);
-    const lines = readFileSync7(ok2.resolved, "utf8").split("\n");
+    const lines = readFileSync8(ok2.resolved, "utf8").split("\n");
     const from = Math.max(1, start);
     const to = Math.min(end, from + CONTEXT_LIMITS.lines - 1, lines.length);
     let text2 = lines.slice(from - 1, to).map((l) => l.slice(0, CONTEXT_LIMITS.lineChars)).join("\n");
@@ -30867,7 +31046,9 @@ function currentGateEntries(d, runId) {
   const commands = d.store.getPlanBody(runId)?.gateCommands ?? {};
   const base = buildGatePlan(d.registry.get(run.protocolId), run.risk, d.detected, d.config, commands);
   const traced = riskRank(run.risk) >= riskRank("medium") && Boolean(d.store.getPlanBody(runId)?.acceptanceCriteria);
-  return [...base, TEST_INTEGRITY_GATE, ...traced ? [AC_TRACEABILITY_GATE] : [], ...run.protocolId === "bug" ? [REPRODUCTION_GATE] : []];
+  const protocol = d.registry.get(run.protocolId);
+  const engineGates = [TEST_INTEGRITY_GATE, ...traced ? [AC_TRACEABILITY_GATE] : [], ...protocol.requiredArtifacts.length ? [REQUIRED_ARTIFACTS_GATE] : [], ...protocol.mode === "existing-repo" ? [MIGRATION_GATE] : []];
+  return [...base, ...engineGates, ...run.protocolId === "bug" ? [REPRODUCTION_GATE] : []];
 }
 function gatePreview(d, runId) {
   const rows = currentGateEntries(d, runId).map((e) => `- ${e.gateId}: ${e.command ? `\`${e.command}\` (${e.source})` : "**no command detected**"}${e.unsupported ? " \u2014 not required: repository does not support this check" : e.required ? " \u2014 required" : ""}`);
@@ -30882,9 +31063,9 @@ function syncGatePlan(d, runId) {
   return entries;
 }
 function excludeStateDir(root, extraDirs = []) {
-  const file2 = join10(root, ".git", "info", "exclude");
-  if (!existsSync10(join10(root, ".git"))) return;
-  const text2 = existsSync10(file2) ? readFileSync8(file2, "utf8") : "";
+  const file2 = join11(root, ".git", "info", "exclude");
+  if (!existsSync10(join11(root, ".git"))) return;
+  const text2 = existsSync10(file2) ? readFileSync9(file2, "utf8") : "";
   const wanted = [".proofloop/", "test-results/", "playwright-report/", "blob-report/", ...extraDirs.map((x) => `${x.replace(/\/$/, "")}/`)];
   const missing = wanted.filter((w) => !text2.split("\n").includes(w));
   if (missing.length) appendFileSync2(file2, `${text2.endsWith("\n") || text2 === "" ? "" : "\n"}${missing.join("\n")}
@@ -30896,7 +31077,7 @@ async function stepReady(d, runId) {
     excludeStateDir(d.root, d.config.app.artifactDirs);
     const branch = run.activeBranch ?? branchName(run.protocolId, run.intent, run.id);
     const base = run.baseCommit ?? await d.git.head(d.root);
-    const wt = await d.git.createWorktree(d.root, branch, base, join10(worktreeRoot(d, runId), "integration"));
+    const wt = await d.git.createWorktree(d.root, branch, base, join11(worktreeRoot(d, runId), "integration"));
     d.store.setFields(runId, { baseCommit: base, activeBranch: branch, worktreePath: wt.path, headSha: wt.head });
   }
   if (d.registry.get(run.protocolId).mode === "idea-to-product") await writeBlueprintDocs(d, runId);
@@ -30907,9 +31088,9 @@ async function writeBlueprintDocs(d, runId) {
   const run = d.store.getRun(runId);
   const needs = JSON.parse(d.store.getKey(`needs-confirmation:${runId}`) ?? "[]");
   for (const f of blueprintDocs(getBlueprint(d.store, runId), run.currentPlanHash, needs)) {
-    const { mkdirSync: mkdirSync6, writeFileSync: writeFileSync4 } = await import("node:fs");
-    mkdirSync6(join10(run.worktreePath, f.path, ".."), { recursive: true });
-    writeFileSync4(join10(run.worktreePath, f.path), f.content);
+    const { mkdirSync: mkdirSync8, writeFileSync: writeFileSync6 } = await import("node:fs");
+    mkdirSync8(join11(run.worktreePath, f.path, ".."), { recursive: true });
+    writeFileSync6(join11(run.worktreePath, f.path), f.content);
   }
   const sha = await d.git.commitAll(run.worktreePath, "docs: add product blueprint, roadmap and decision records");
   if (sha) d.store.setFields(runId, { headSha: sha });
@@ -30984,7 +31165,7 @@ async function stepPullRequest(d, runId) {
 }
 
 // src/engine/steps-verify.ts
-import { readFileSync as readFileSync9 } from "node:fs";
+import { readFileSync as readFileSync10 } from "node:fs";
 init_workflow();
 init_risk();
 init_schema();
@@ -31025,12 +31206,12 @@ function logTail(d, r) {
   const ev = d.store.evidenceFor(r.taskRunId).find((e) => r.evidenceIds.includes(e.id) && e.kind === "gate-log");
   if (!ev) return "(no log)";
   try {
-    return readFileSync9(String(ev.uri), "utf8").split("\n").slice(-LOG_TAIL_LINES).join("\n");
+    return readFileSync10(String(ev.uri), "utf8").split("\n").slice(-LOG_TAIL_LINES).join("\n");
   } catch {
     return "(log unreadable)";
   }
 }
-var summarize = (d, rows) => rows.map((r) => `### gate ${r.gateId}: ${r.state}${r.failureCategory ? ` (${r.failureCategory})` : ""}
+var summarize2 = (d, rows) => rows.map((r) => `### gate ${r.gateId}: ${r.state}${r.failureCategory ? ` (${r.failureCategory})` : ""}
 command: ${r.commandOrAssertion}
 ${logTail(d, r)}`).join("\n\n");
 async function commitPending(d, run, cwd) {
@@ -31073,7 +31254,7 @@ async function routeFailure(d, runId, failing) {
   const fp = failing.map((r) => `${r.gateId}:${r.fingerprint ?? ""}`).sort().join("|");
   if (d.store.getKey(`fp:${runId}`) === fp) return block(d, runId, `identical failure repeated with no new evidence: ${desc}`);
   d.store.setKey(`fp:${runId}`, fp);
-  d.store.setKey(`repair-notes:${runId}`, summarize(d, failing));
+  d.store.setKey(`repair-notes:${runId}`, summarize2(d, failing));
   return enterRepair(d, runId, `repair budget exhausted; failing: ${desc}`);
 }
 async function enterRepair(d, runId, exhausted) {
@@ -31174,7 +31355,10 @@ var Engine = class {
     const projectId = d.store.ensureProject({ name: basename2(d.root), repository: await d.git.remoteRepo(d.root), defaultBranch: await d.git.defaultBranch(d.root), detectedStack: d.detected });
     const key2 = hashObject([input2.protocolId, input2.intent, d.root, input2.again ? clockOf(d).nowMs() : 0]);
     let run = d.store.createRun({ projectId, protocolId: protocol.id, protocolVersion: protocol.version, intent: input2.intent, risk: protocol.defaultRisk, repairBudget: protocol.retry.maxRepairAttempts, idempotencyKey: key2 });
-    if (run.state === "NEW") run = d.store.transition(run.id, "DISCOVERING", { actor: "engine" });
+    if (run.state === "NEW") {
+      d.store.audit(run.id, "protocol.pinned", "engine", { id: protocol.id, version: protocol.version, sha256: hashObject(protocol), engine: ENGINE_VERSION });
+      run = d.store.transition(run.id, "DISCOVERING", { actor: "engine" });
+    }
     if (protocol.mode === "idea-to-product") recordAnswer(d.store, run.id, "outcome", { text: input2.intent, source: "user" });
     await d.github.ensureParent(run.id, `[${protocol.id}] ${input2.intent}`.slice(0, 120), `**Intent**
 
@@ -31392,7 +31576,7 @@ Run: \`${run.id}\``, [protocol.id === "bug" ? "bug" : "feature"]);
   }
   worktreeOf(runId) {
     const p = this.d.store.getRun(runId).worktreePath;
-    return p ? join11(p) : null;
+    return p ? join12(p) : null;
   }
 };
 
@@ -31403,17 +31587,19 @@ async function createEngine(o) {
   const store = new Store(openDb(o.dbFile ?? dbPath(o.root)), o.clock);
   const repo = config2.github.repo ?? await git.remoteRepo(o.root);
   const port = o.port !== void 0 ? o.port : config2.github.enabled && repo ? new GhAdapter(repo) : null;
+  const registry2 = loadRegistry(o.root);
+  const requiredArtifacts = (ctx) => requiredArtifactsBuiltin(registry2.get(store.getRun(ctx.runId).protocolId).requiredArtifacts)(ctx);
   return new Engine({
     root: o.root,
     store,
     config: config2,
-    registry: loadRegistry(o.root),
+    registry: registry2,
     git,
     runtime: o.runtime,
     github: new GithubSync(store, port),
     port,
     detected: detectRepo(o.root),
-    builtins: { ...coreBuiltins, "reproduction-proven": reproductionProven, "ac-traceability": acTraceability, ...blueprintBuiltins, ...o.extraBuiltins },
+    builtins: { ...coreBuiltins, "reproduction-proven": reproductionProven, "ac-traceability": acTraceability, "required-artifacts": requiredArtifacts, "migration-readiness": migrationReadiness, "baseline-recorded": baselineRecorded, "before-after": beforeAfter, ...blueprintBuiltins, ...o.extraBuiltins },
     clock: o.clock,
     exec: o.exec,
     logger: o.logger
@@ -31423,6 +31609,25 @@ async function createEngine(o) {
 // src/cli/index.ts
 init_workflow();
 init_errors3();
+
+// src/perf/record.ts
+init_errors3();
+init_hash();
+import { mkdirSync as mkdirSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { join as join13 } from "node:path";
+function recordMeasurement(store, runId, input2, artifactDir2) {
+  const parsed = measurementSchema.safeParse(input2);
+  if (!parsed.success) throw new PlError("PL_PERF_010", `invalid measurement: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+  const m = parsed.data;
+  if (!m.samples && !m.summary) throw new PlError("PL_PERF_011", "a measurement needs raw samples or a tool summary");
+  const dir = join13(artifactDir2, runId);
+  mkdirSync6(dir, { recursive: true });
+  const body2 = JSON.stringify(m, null, 1);
+  const uri = join13(dir, `perf-${m.phase}-${m.commit.slice(0, 8)}.json`);
+  writeFileSync4(uri, body2);
+  const evidenceId = store.addEvidence({ taskRunId: runId, kind: m.phase === "baseline" ? "perf-baseline" : "perf-after", uri, checksum: sha256(body2), commitSha: m.commit, environment: `${m.kind}; ${m.environment}`, summary: `${m.phase} ${m.target.metric} ${m.target.comparator} ${m.target.value}${m.target.unit} on ${m.workload.description}`, redactionStatus: "none-needed" });
+  return { evidenceId, measurement: m };
+}
 
 // src/cli/hook.ts
 init_paths();
@@ -31467,7 +31672,8 @@ var HELP = `proofloop ${ENGINE_VERSION}
 Task commands:  feature|bug|diagnose|performance|refactor|security "<request>" \xB7 start-project "<idea>"
 Blueprint:      blueprint next-question|answer|defaults|submit|show <id>
 Lifecycle:      status [id] \xB7 approve <id> --plan-hash H [--scope S] \xB7 reject <id> --comment C \xB7 run <id> \xB7 resume <id> [--retry] \xB7 cancel <id> \xB7 pause <id>
-Evidence:       verify \xB7 report <id> [--out file] \xB7 plan show <id>
+Evidence:       verify \xB7 report <id> [--out file] \xB7 readiness <id> \xB7 plan show <id>
+Artifacts:      artifact add|list <id> [name --file f] \xB7 perf record|import-k6 <id> --file f
 Setup:          setup [--yes] [--github owner/repo] \xB7 protocols \xB7 protocol validate <file...>
 Options:        --root <dir> \xB7 --json
 `;
@@ -31488,8 +31694,8 @@ function outcomeText(o, next) {
 `;
 }
 async function engineOf(c, root) {
-  const runtime = c.makeRuntime?.(root) ?? new ClaudeCodeRuntime({ guardCommand: join12(pluginRoot(), "bin", "proofloop") });
-  const logFile = join12(root, ".proofloop", "logs", "proofloop.log");
+  const runtime = c.makeRuntime?.(root) ?? new ClaudeCodeRuntime({ guardCommand: join14(pluginRoot(), "bin", "proofloop") });
+  const logFile = join14(root, ".proofloop", "logs", "proofloop.log");
   return createEngine({ root, runtime, logger: new FileLogger(logFile) });
 }
 async function runCli(argv, c) {
@@ -31497,7 +31703,7 @@ async function runCli(argv, c) {
     args: argv,
     allowPositionals: true,
     strict: false,
-    options: { root: { type: "string" }, json: { type: "boolean" }, yes: { type: "boolean" }, retry: { type: "boolean" }, "plan-hash": { type: "string" }, scope: { type: "string" }, comment: { type: "string" }, out: { type: "string" }, github: { type: "string" }, file: { type: "string" }, again: { type: "boolean" }, topic: { type: "string" }, text: { type: "string" } }
+    options: { root: { type: "string" }, json: { type: "boolean" }, yes: { type: "boolean" }, retry: { type: "boolean" }, "plan-hash": { type: "string" }, scope: { type: "string" }, comment: { type: "string" }, out: { type: "string" }, github: { type: "string" }, file: { type: "string" }, again: { type: "boolean" }, meta: { type: "string" }, topic: { type: "string" }, text: { type: "string" } }
   });
   const [cmd2, ...rest] = positionals;
   const json2 = values.json === true;
@@ -31564,9 +31770,9 @@ async function withEngine(c, root, cmd2, rest, v, json2) {
     case "report": {
       if (!id3) return c.io.err("usage: proofloop report <id> [--out file]\n"), EXIT.usage;
       const md = e.report(id3);
-      const dest = v.out ?? join12(root, ".proofloop", "reports", `${id3}.md`);
-      mkdirSync5(dirname5(dest), { recursive: true });
-      writeFileSync3(dest, md);
+      const dest = v.out ?? join14(root, ".proofloop", "reports", `${id3}.md`);
+      mkdirSync7(dirname5(dest), { recursive: true });
+      writeFileSync5(dest, md);
       show(c, json2, { path: dest }, `${md}
 written to ${dest}
 `);
@@ -31574,6 +31780,15 @@ written to ${dest}
     }
     case "plan":
       return planCmd(c, e, rest, v, json2);
+    case "artifact":
+      return artifactCmd(c, e, rest, v, json2, root);
+    case "perf":
+      return perfCmd(c, e, rest, v, json2, root);
+    case "readiness": {
+      if (!id3) return c.io.err("usage: proofloop readiness <id>\n"), EXIT.usage;
+      c.io.out(renderReadiness(e.d.store, id3));
+      return EXIT.ok;
+    }
     case "start-project":
       return startProject(c, e, rest.join(" ").trim(), json2);
     case "blueprint":
@@ -31651,7 +31866,7 @@ async function planCmd(c, e, rest, v, json2) {
   }
   if (sub === "submit") {
     const file2 = v.file;
-    const raw = file2 ? readFileSync10(file2, "utf8") : c.io.stdin();
+    const raw = file2 ? readFileSync11(file2, "utf8") : c.io.stdin();
     return await submit(c, id3, raw, e);
   }
   return c.io.err("usage: proofloop plan show|submit <id>\n"), EXIT.usage;
@@ -31702,7 +31917,7 @@ These are ASSUMPTIONS: list each as an unconfirmed assumption in the blueprint.
     return EXIT.ok;
   }
   if (sub === "submit") {
-    const raw = v.file ? readFileSync10(String(v.file), "utf8") : c.io.stdin();
+    const raw = v.file ? readFileSync11(String(v.file), "utf8") : c.io.stdin();
     const r = submitBlueprint(st, id3, JSON.parse(raw));
     c.io.out(`${r.markdown}
 blueprint hash: ${r.hash}
@@ -31718,6 +31933,35 @@ ${r.warnings.map((w) => `warning: ${w}
   }
   return c.io.err("usage: proofloop blueprint next-question|answer|defaults|submit|show <id>\n"), EXIT.usage;
 }
+function artifactCmd(c, e, rest, v, json2, root) {
+  const [sub, id3, name] = rest;
+  if (sub === "list" && id3) {
+    const items = e.d.store.evidenceFor(id3).map((x) => ({ kind: String(x.kind), summary: String(x.summary), commit: x.commit_sha ? String(x.commit_sha).slice(0, 8) : null }));
+    show(c, json2, items, `${items.map((x) => `${x.kind.padEnd(28)} ${x.commit ?? "-"}  ${x.summary}`).join("\n") || "no artifacts"}
+`);
+    return EXIT.ok;
+  }
+  if (sub !== "add" || !id3 || !name) return c.io.err('usage: proofloop artifact add <id> <name> (--file path | --text "...") | artifact list <id>\n'), EXIT.usage;
+  const content = v.file ? readFileSync11(String(v.file), "utf8") : String(v.text ?? "");
+  if (!content.trim()) return c.io.err("artifact content is empty\n"), EXIT.usage;
+  const evd = addArtifact(e.d.store, id3, { name, content, artifactDir: join14(root, ".proofloop", "artifacts"), commitSha: e.d.store.getRun(id3).headSha ?? void 0 });
+  c.io.out(`recorded artifact ${name} (${evd})
+`);
+  return EXIT.ok;
+}
+function perfCmd(c, e, rest, v, json2, root) {
+  const [sub, id3] = rest;
+  if (!id3 || !v.file) return c.io.err("usage: proofloop perf record <id> --file measurement.json | perf import-k6 <id> --file k6.json --meta meta.json\n"), EXIT.usage;
+  let input2 = JSON.parse(readFileSync11(String(v.file), "utf8"));
+  if (sub === "import-k6") {
+    if (!v.meta) return c.io.err("import-k6 needs --meta with phase, environment, workload, target, commit, capturedAt\n"), EXIT.usage;
+    input2 = fromK6Summary(input2, JSON.parse(readFileSync11(String(v.meta), "utf8")));
+  } else if (sub !== "record") return c.io.err("usage: proofloop perf record|import-k6 <id> ...\n"), EXIT.usage;
+  const r = recordMeasurement(e.d.store, id3, input2, join14(root, ".proofloop", "artifacts"));
+  show(c, json2, r.measurement, `recorded ${r.measurement.phase} (${r.measurement.kind}, n=${sampleCount(r.measurement)}) at ${r.measurement.commit.slice(0, 8)}
+`);
+  return EXIT.ok;
+}
 function protocols(c, json2, root) {
   const reg = loadRegistry(root);
   const list = reg.list().map((p) => ({ id: p.id, version: p.version, mode: p.mode, risk: p.defaultRisk, title: p.title }));
@@ -31731,7 +31975,7 @@ function validate2(c, files) {
   if (files.length === 0) return c.io.err("usage: proofloop protocol validate <file.yaml...>\n"), EXIT.usage;
   let bad = 0;
   for (const f of files) {
-    const { diagnostics } = parseProtocol(readFileSync10(resolve2(c.cwd, f), "utf8"), f);
+    const { diagnostics } = parseProtocol(readFileSync11(resolve2(c.cwd, f), "utf8"), f);
     if (diagnostics.length === 0) c.io.out(`ok  ${f}
 `);
     for (const d of diagnostics) {
@@ -31793,7 +32037,7 @@ var io = {
   err: (t) => void process.stderr.write(t),
   stdin: () => {
     try {
-      return readFileSync11(0, "utf8");
+      return readFileSync12(0, "utf8");
     } catch {
       return "";
     }

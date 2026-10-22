@@ -62,7 +62,7 @@ export function gateCtx(d: EngineDeps, runId: string, cwd: string, commitSha: st
   const policy = policyFor(d, runId);
   return {
     ...(app.start && app.url ? { startApp: () => startApp({ cwd, start: app.start!, url: app.url!, seed: app.seed, timeoutMs: app.startTimeoutMs, policy: { allowed: [...policy.allowed, ...[app.start!, ...(app.seed ? [app.seed] : [])].map(tokenize)] }, exec: d.exec }) } : {}),
-    personas: app.personas, artifactDirs: app.artifactDirs, resultsFile: app.resultsFile,
+    personas: app.personas, artifactDirs: app.artifactDirs, resultsFile: app.resultsFile, environmentKind: d.config.environment,
     store: d.store, runId, cwd, commitSha, policy: policyFor(d, runId), git: d.git, artifactDir: artifactDir(d), timeoutMs: d.config.limits.gateTimeoutMs,
     environment: environmentLabel(d.config.environment), clock: clockOf(d), exec: d.exec, builtins: d.builtins,
   };

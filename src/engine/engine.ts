@@ -4,6 +4,7 @@ import { buildGatePlan } from '../gates/plan';
 import { gateReport, runGates } from '../gates/runner';
 import { hashObject } from '../shared/hash';
 import { PlError } from '../shared/errors';
+import { ENGINE_VERSION } from '../version';
 import { TERMINAL_STATES, type TaskState } from '../state/machine';
 import type { TaskRun } from '../state/store';
 import { type EngineDeps, clockOf, gateCtx, totalCostUsd } from './deps';
@@ -45,7 +46,10 @@ export class Engine {
     const projectId = d.store.ensureProject({ name: basename(d.root), repository: await d.git.remoteRepo(d.root), defaultBranch: await d.git.defaultBranch(d.root), detectedStack: d.detected });
     const key = hashObject([input.protocolId, input.intent, d.root, input.again ? clockOf(d).nowMs() : 0]);
     let run = d.store.createRun({ projectId, protocolId: protocol.id, protocolVersion: protocol.version, intent: input.intent, risk: protocol.defaultRisk, repairBudget: protocol.retry.maxRepairAttempts, idempotencyKey: key });
-    if (run.state === 'NEW') run = d.store.transition(run.id, 'DISCOVERING', { actor: 'engine' });
+    if (run.state === 'NEW') {
+      d.store.audit(run.id, 'protocol.pinned', 'engine', { id: protocol.id, version: protocol.version, sha256: hashObject(protocol), engine: ENGINE_VERSION });
+      run = d.store.transition(run.id, 'DISCOVERING', { actor: 'engine' });
+    }
     if (protocol.mode === 'idea-to-product') recordAnswer(d.store, run.id, 'outcome', { text: input.intent, source: 'user' });
     await d.github.ensureParent(run.id, `[${protocol.id}] ${input.intent}`.slice(0, 120), `**Intent**\n\n${input.intent}\n\nProtocol: ${protocol.id}@${protocol.version}\nRun: \`${run.id}\``, [protocol.id === 'bug' ? 'bug' : 'feature']);
     return d.store.getRun(run.id);

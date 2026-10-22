@@ -38,7 +38,7 @@ ${wrapUntrusted('file-hypotheses', a.files.map((f) => f.path).join('\n') || '(no
 Inspect the repository (read-only), then output ONE plan object matching the provided JSON schema.
 Mark affected modules "confirmed" only if you read them; otherwise "hypothesis". List unconfirmed assumptions honestly.
 Every acceptance criterion needs an executable test or a documented manual check. Keep tasks small; give each task explicit fileScopes.
-${a.protocol.id === 'bug' ? 'This is a bug: include reproduction (reproducible yes/no/unknown) and a regressionTest {file, command} that fails before the fix.\n' : ''}${a.priorErrors?.length ? `\nYour previous plan was rejected by validation:\n- ${a.priorErrors.join('\n- ')}\nFix exactly these problems.\n` : ''}`;
+${a.protocol.id === 'bug' ? 'This is a bug: include reproduction (reproducible yes/no/unknown) and a regressionTest {file, command} that fails before the fix, and a rootCause (confirmed cause, or an explicit uncertainty). The FIRST task must only add the regression test.\n' : ''}${a.priorErrors?.length ? `\nYour previous plan was rejected by validation:\n- ${a.priorErrors.join('\n- ')}\nFix exactly these problems.\n` : ''}`;
 }
 
 export function implementerPrompt(a: { plan: Plan; taskId: string; repairNotes?: string; interrupted?: boolean }): string {

@@ -1,0 +1,23 @@
+# Generic starting point for any repository: copy to .proofloop/protocols/ and adjust.
+schemaVersion: 1
+id: generic-change
+version: 1.0.0
+title: Generic change
+description: Plan, approve, implement, run whatever checks the repository has.
+engine: ">=0.7.0"
+mode: existing-repo
+defaultRisk: medium
+retry: { maxRepairAttempts: 3, stopOnIdenticalFailure: true }
+requiredArtifacts: [intent-brief, acceptance-criteria, implementation-plan, approved-plan-record]
+gates:
+  - { id: lint, kind: lint, required: true }
+  - { id: unit, kind: unit, required: true }
+  - { id: build, kind: build, required: true }
+phases:
+  - { id: intake, title: Capture the request }
+  - { id: plan, title: Plan }
+  - { id: approval, title: Human plan approval }
+  - { id: implementation, title: Implement }
+  - { id: verification, title: Run gates, gates: [lint, unit, build] }
+  - { id: repair, title: Bounded repair loop }
+  - { id: delivery, title: Open the pull request with evidence }

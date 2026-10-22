@@ -39,6 +39,8 @@ export interface GateRunCtx {
   artifactDirs?: readonly string[];
   /** Playwright JSON report (relative to cwd) used to map executed tests to acceptance criteria. */
   resultsFile?: string | undefined;
+  /** dev/staging/local run freely; production needs a gate-scoped human approval. */
+  environmentKind?: string;
 }
 
 export const environmentLabel = (kind: string): string => `${kind}; ${process.platform}-${process.arch}; node ${process.version}`;
@@ -79,6 +81,10 @@ const blocked = (ctx: GateRunCtx, entry: GatePlanEntry, started: string, categor
 export async function runGate(ctx: GateRunCtx, entry: GatePlanEntry): Promise<GateResultRow> {
   const started = ctx.clock.nowIso();
   if (!entry.command) return blocked(ctx, entry, started, 'command-not-detected', `no command for gate "${entry.gateId}" could be detected or configured`);
+  if (ctx.environmentKind === 'production' && !ctx.store.hasGatedApproval(ctx.runId, `production:${entry.gateId}`)) {
+    ctx.store.audit(ctx.runId, 'policy.denied', 'engine', { gate: entry.gateId, class: 'production', reason: 'production environment requires explicit approval immediately before the action' });
+    return blocked(ctx, entry, started, 'production-environment', `gate ${entry.gateId} would act against a production environment; grant scope "production:${entry.gateId}" explicitly`);
+  }
   const head = await ctx.git.head(ctx.cwd);
   if (head !== ctx.commitSha) return blocked(ctx, entry, started, 'commit-mismatch', `worktree HEAD ${head.slice(0, 8)} is not the candidate commit ${ctx.commitSha.slice(0, 8)}`);
   if (await ctx.git.hasTrackedChanges(ctx.cwd)) return blocked(ctx, entry, started, 'dirty-tree', 'tracked files differ from the candidate commit: evidence must map to a commit');

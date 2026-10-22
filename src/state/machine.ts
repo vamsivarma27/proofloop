@@ -41,7 +41,7 @@ export const allowedTransitions = (from: TaskState): readonly TaskState[] => TAB
 export const isAllowedTransition = (from: TaskState, to: TaskState): boolean => TABLE[from].includes(to);
 
 /** Gates the engine adds itself; they can never be the only thing standing between a change and delivery. */
-export const ENGINE_GATE_IDS: readonly string[] = ['test-integrity', 'reproduction-proven', 'ac-traceability'];
+export const ENGINE_GATE_IDS: readonly string[] = ['test-integrity', 'reproduction-proven', 'ac-traceability', 'required-artifacts', 'migration-readiness'];
 
 export type GateState = 'PASS' | 'FAIL' | 'BLOCKED';
 

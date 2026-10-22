@@ -1,0 +1,29 @@
+# Next.js feature protocol: browser journeys are required from medium risk.
+schemaVersion: 1
+id: nextjs-feature
+version: 1.0.0
+title: Next.js feature protocol
+description: Feature work in a Next.js app; typecheck, unit tests and a Playwright journey gate every UI change.
+engine: ">=0.7.0"
+mode: existing-repo
+defaultRisk: medium
+retry: { maxRepairAttempts: 3, stopOnIdenticalFailure: true }
+requiredArtifacts: [intent-brief, impact-map, acceptance-criteria, implementation-plan, test-plan, approved-plan-record]
+personas: [ordinary-user, impatient-user, unauthorized-user, accessibility]
+gates:
+  - { id: lint, kind: lint, required: true }
+  - { id: typecheck, kind: typecheck, required: true }
+  - { id: unit, kind: unit, required: true }
+  - { id: build, kind: build, required: true }
+  - { id: browser, kind: browser, required: true, minRisk: medium }
+  - { id: security-scan, kind: security-scan, required: true, minRisk: high }
+phases:
+  - { id: intake, title: Classify the request }
+  - { id: reconnaissance, title: "Inspect routes, server actions and components" }
+  - { id: plan, title: Plan UI states and tests }
+  - { id: approval, title: Human plan approval }
+  - { id: implementation, title: Implement in an isolated worktree }
+  - { id: verification, title: Run gates, gates: [lint, typecheck, unit, build, browser, security-scan] }
+  - { id: repair, title: Bounded repair loop }
+  - { id: review, title: Independent review }
+  - { id: delivery, title: Open the pull request with evidence }

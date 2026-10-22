@@ -13,6 +13,7 @@ import { Store } from '../state/store';
 import { reproductionProven } from './bug';
 import { blueprintBuiltins } from '../blueprint/workflow';
 import { acTraceability } from '../browser/traceability';
+import { baselineRecorded, beforeAfter, migrationReadiness, requiredArtifactsBuiltin } from '../gates/artifacts';
 import type { BuiltinFn } from './deps';
 import { Engine } from './engine';
 
@@ -35,8 +36,10 @@ export async function createEngine(o: EngineOptions): Promise<Engine> {
   const store = new Store(openDb(o.dbFile ?? dbPath(o.root)), o.clock);
   const repo = config.github.repo ?? (await git.remoteRepo(o.root));
   const port = o.port !== undefined ? o.port : config.github.enabled && repo ? new GhAdapter(repo) : null;
+  const registry = loadRegistry(o.root);
+  const requiredArtifacts: BuiltinFn = (ctx) => requiredArtifactsBuiltin(registry.get(store.getRun(ctx.runId).protocolId).requiredArtifacts)(ctx);
   return new Engine({
-    root: o.root, store, config, registry: loadRegistry(o.root), git, runtime: o.runtime, github: new GithubSync(store, port), port,
-    detected: detectRepo(o.root), builtins: { ...coreBuiltins, 'reproduction-proven': reproductionProven, 'ac-traceability': acTraceability, ...blueprintBuiltins, ...o.extraBuiltins }, clock: o.clock, exec: o.exec, logger: o.logger,
+    root: o.root, store, config, registry, git, runtime: o.runtime, github: new GithubSync(store, port), port,
+    detected: detectRepo(o.root), builtins: { ...coreBuiltins, 'reproduction-proven': reproductionProven, 'ac-traceability': acTraceability, 'required-artifacts': requiredArtifacts, 'migration-readiness': migrationReadiness, 'baseline-recorded': baselineRecorded, 'before-after': beforeAfter, ...blueprintBuiltins, ...o.extraBuiltins }, clock: o.clock, exec: o.exec, logger: o.logger,
   });
 }

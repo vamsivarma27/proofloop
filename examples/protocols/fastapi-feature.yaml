@@ -1,0 +1,28 @@
+# Python/FastAPI feature protocol: migrations and security scans are required earlier than the built-in feature protocol.
+schemaVersion: 1
+id: fastapi-feature
+version: 1.0.0
+title: FastAPI feature protocol
+description: API feature work with contract, migration and dependency-scan gates.
+engine: ">=0.7.0"
+mode: existing-repo
+defaultRisk: medium
+retry: { maxRepairAttempts: 3, stopOnIdenticalFailure: true }
+requiredArtifacts: [intent-brief, impact-map, acceptance-criteria, implementation-plan, test-plan, approved-plan-record]
+gates:
+  - { id: lint, kind: lint, required: true }
+  - { id: typecheck, kind: typecheck, required: true }
+  - { id: unit, kind: unit, required: true }
+  - { id: integration, kind: integration, required: true }
+  - { id: migration, kind: migration, required: true, minRisk: medium }
+  - { id: security-scan, kind: security-scan, required: true, minRisk: medium }
+phases:
+  - { id: intake, title: Classify the request }
+  - { id: reconnaissance, title: "Inspect routers, schemas and migrations" }
+  - { id: plan, title: Plan endpoint contract and tests }
+  - { id: approval, title: Human plan approval }
+  - { id: implementation, title: Implement }
+  - { id: verification, title: Run gates, gates: [lint, typecheck, unit, integration, migration, security-scan] }
+  - { id: repair, title: Bounded repair loop }
+  - { id: review, title: Independent review }
+  - { id: delivery, title: Open the pull request with evidence }

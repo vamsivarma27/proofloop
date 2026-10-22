@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AC_TRACEABILITY_GATE, buildGatePlan, TEST_INTEGRITY_GATE, type GatePlanEntry } from '../gates/plan';
+import { AC_TRACEABILITY_GATE, MIGRATION_GATE, REQUIRED_ARTIFACTS_GATE, buildGatePlan, TEST_INTEGRITY_GATE, type GatePlanEntry } from '../gates/plan';
 import { riskRank } from '../protocol/schema';
 import { branchName } from '../git/git';
 import { submitPlan } from '../plan/workflow';
@@ -68,7 +68,9 @@ export function currentGateEntries(d: EngineDeps, runId: string): GatePlanEntry[
   const commands = (d.store.getPlanBody(runId) as { gateCommands?: Record<string, string> } | undefined)?.gateCommands ?? {};
   const base = buildGatePlan(d.registry.get(run.protocolId), run.risk, d.detected, d.config, commands);
   const traced = riskRank(run.risk) >= riskRank('medium') && Boolean((d.store.getPlanBody(runId) as { acceptanceCriteria?: unknown } | undefined)?.acceptanceCriteria);
-  return [...base, TEST_INTEGRITY_GATE, ...(traced ? [AC_TRACEABILITY_GATE] : []), ...(run.protocolId === 'bug' ? [REPRODUCTION_GATE] : [])];
+  const protocol = d.registry.get(run.protocolId);
+  const engineGates = [TEST_INTEGRITY_GATE, ...(traced ? [AC_TRACEABILITY_GATE] : []), ...(protocol.requiredArtifacts.length ? [REQUIRED_ARTIFACTS_GATE] : []), ...(protocol.mode === 'existing-repo' ? [MIGRATION_GATE] : [])];
+  return [...base, ...engineGates, ...(run.protocolId === 'bug' ? [REPRODUCTION_GATE] : [])];
 }
 
 export function gatePreview(d: EngineDeps, runId: string): string {

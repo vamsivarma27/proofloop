@@ -188,6 +188,7 @@ describe('bug protocol', () => {
       gateCommands: { 'regression-test': 'node bug.check.js' },
       reproduction: { steps: 'run it', observed: 'fix.txt missing', expected: 'fix.txt present', reproducible: over.reproducible ?? 'yes' },
       regressionTest: { file: 'bug.check.js', command: 'node bug.check.js' },
+      rootCause: { hypotheses: ['fix.txt is never written after retry'], confirmed: 'the retry path skips the writer' },
     });
   const BUG_CHECK = `process.exit(require('fs').existsSync('fix.txt')?0:1)`;
   const bugProject = () => project({ scripts: { lint: 'node -e 0', test: 'node -e 0', build: 'node -e 0', typecheck: 'node -e 0' } });

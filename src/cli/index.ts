@@ -13,6 +13,10 @@ import { nodeExec } from '../shared/exec';
 import { FileLogger } from '../shared/log';
 import { type DriveOutcome } from '../engine/engine';
 import { ENGINE_VERSION } from '../version';
+import { addArtifact } from '../gates/artifacts';
+import { fromK6Summary, sampleCount } from '../perf/report';
+import { recordMeasurement } from '../perf/record';
+import { renderReadiness } from '../engine/report';
 import { TOPICS, type TopicId, fillDefaults, loadInterview, nextQuestion, recordAnswer } from '../blueprint/interview';
 import { renderBlueprintMarkdown } from '../blueprint/render';
 import { getBlueprint, submitBlueprint } from '../blueprint/workflow';
@@ -43,7 +47,8 @@ const HELP = `proofloop ${ENGINE_VERSION}
 Task commands:  feature|bug|diagnose|performance|refactor|security "<request>" · start-project "<idea>"
 Blueprint:      blueprint next-question|answer|defaults|submit|show <id>
 Lifecycle:      status [id] · approve <id> --plan-hash H [--scope S] · reject <id> --comment C · run <id> · resume <id> [--retry] · cancel <id> · pause <id>
-Evidence:       verify · report <id> [--out file] · plan show <id>
+Evidence:       verify · report <id> [--out file] · readiness <id> · plan show <id>
+Artifacts:      artifact add|list <id> [name --file f] · perf record|import-k6 <id> --file f
 Setup:          setup [--yes] [--github owner/repo] · protocols · protocol validate <file...>
 Options:        --root <dir> · --json
 `;
@@ -75,7 +80,7 @@ export async function runCli(argv: string[], c: CliEnv): Promise<number> {
     args: argv,
     allowPositionals: true,
     strict: false,
-    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' }, topic: { type: 'string' }, text: { type: 'string' } },
+    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' }, meta: { type: 'string' }, topic: { type: 'string' }, text: { type: 'string' } },
   });
   const [cmd, ...rest] = positionals;
   const json = values.json === true;
@@ -146,6 +151,15 @@ async function withEngine(c: CliEnv, root: string, cmd: string, rest: string[], 
     }
     case 'plan':
       return planCmd(c, e, rest, v, json);
+    case 'artifact':
+      return artifactCmd(c, e, rest, v, json, root);
+    case 'perf':
+      return perfCmd(c, e, rest, v, json, root);
+    case 'readiness': {
+      if (!id) return (c.io.err('usage: proofloop readiness <id>\n'), EXIT.usage);
+      c.io.out(renderReadiness(e.d.store, id));
+      return EXIT.ok;
+    }
     case 'start-project':
       return startProject(c, e, rest.join(' ').trim(), json);
     case 'blueprint':
@@ -270,6 +284,34 @@ async function blueprintCmd(c: CliEnv, e: Eng, rest: string[], v: Record<string,
     return EXIT.ok;
   }
   return (c.io.err('usage: proofloop blueprint next-question|answer|defaults|submit|show <id>\n'), EXIT.usage);
+}
+
+function artifactCmd(c: CliEnv, e: Eng, rest: string[], v: Record<string, string | boolean | undefined>, json: boolean, root: string): number {
+  const [sub, id, name] = rest;
+  if (sub === 'list' && id) {
+    const items = e.d.store.evidenceFor(id).map((x) => ({ kind: String(x.kind), summary: String(x.summary), commit: x.commit_sha ? String(x.commit_sha).slice(0, 8) : null }));
+    show(c, json, items, `${items.map((x) => `${x.kind.padEnd(28)} ${x.commit ?? '-'}  ${x.summary}`).join('\n') || 'no artifacts'}\n`);
+    return EXIT.ok;
+  }
+  if (sub !== 'add' || !id || !name) return (c.io.err('usage: proofloop artifact add <id> <name> (--file path | --text "...") | artifact list <id>\n'), EXIT.usage);
+  const content = v.file ? readFileSync(String(v.file), 'utf8') : String(v.text ?? '');
+  if (!content.trim()) return (c.io.err('artifact content is empty\n'), EXIT.usage);
+  const evd = addArtifact(e.d.store, id, { name, content, artifactDir: join(root, '.proofloop', 'artifacts'), commitSha: e.d.store.getRun(id).headSha ?? undefined });
+  c.io.out(`recorded artifact ${name} (${evd})\n`);
+  return EXIT.ok;
+}
+
+function perfCmd(c: CliEnv, e: Eng, rest: string[], v: Record<string, string | boolean | undefined>, json: boolean, root: string): number {
+  const [sub, id] = rest;
+  if (!id || !v.file) return (c.io.err('usage: proofloop perf record <id> --file measurement.json | perf import-k6 <id> --file k6.json --meta meta.json\n'), EXIT.usage);
+  let input = JSON.parse(readFileSync(String(v.file), 'utf8'));
+  if (sub === 'import-k6') {
+    if (!v.meta) return (c.io.err('import-k6 needs --meta with phase, environment, workload, target, commit, capturedAt\n'), EXIT.usage);
+    input = fromK6Summary(input, JSON.parse(readFileSync(String(v.meta), 'utf8')));
+  } else if (sub !== 'record') return (c.io.err('usage: proofloop perf record|import-k6 <id> ...\n'), EXIT.usage);
+  const r = recordMeasurement(e.d.store, id, input, join(root, '.proofloop', 'artifacts'));
+  show(c, json, r.measurement, `recorded ${r.measurement.phase} (${r.measurement.kind}, n=${sampleCount(r.measurement)}) at ${r.measurement.commit.slice(0, 8)}\n`);
+  return EXIT.ok;
 }
 
 function protocols(c: CliEnv, json: boolean, root: string): number {

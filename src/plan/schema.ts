@@ -47,6 +47,7 @@ export const planSchema = z.strictObject({
   gateCommands: z.record(z.string(), z.string()).default({}),
   reproduction: z.strictObject({ steps: z.string(), observed: z.string(), expected: z.string(), reproducible: z.enum(['yes', 'no', 'unknown']) }).optional(),
   regressionTest: z.strictObject({ file: z.string(), command: z.string() }).optional(),
+  rootCause: z.strictObject({ hypotheses: z.array(z.string().min(3)).min(1), confirmed: z.string().min(3).optional(), uncertainty: z.string().min(3).optional() }).optional(),
 });
 
 export type Plan = z.infer<typeof planSchema>;
@@ -87,6 +88,7 @@ export function validatePlan(input: unknown, opts: { protocolId?: string } = {})
   if (riskRank(plan.risk.level) < riskRank(floor)) errors.push(`plan risk "${plan.risk.level}" is below the engine-computed minimum "${floor}" for the affected paths; agents cannot lower risk`);
   if (opts.protocolId === 'bug' && !plan.regressionTest) errors.push('bug plans need a regressionTest (file + command)');
   if (opts.protocolId === 'bug' && !plan.reproduction) errors.push('bug plans need a reproduction record (reproducible: yes|no|unknown)');
+  if (opts.protocolId === 'bug' && !(plan.rootCause?.confirmed || plan.rootCause?.uncertainty)) errors.push('bug plans need a rootCause with a confirmed cause or an explicit uncertainty');
 
   if (errors.length === 0) {
     for (let i = 0; i < plan.tasks.length; i++)

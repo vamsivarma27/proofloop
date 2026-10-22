@@ -53,7 +53,7 @@ describe('plan validation', () => {
   });
 
   it('requires reproduction and regression test for bug plans', () => {
-    expect(validatePlan(validPlan(), { protocolId: 'bug' }).errors.length).toBe(2);
+    expect(validatePlan(validPlan(), { protocolId: 'bug' }).errors.length).toBe(3);
   });
 
   it('warns about overlapping unordered tasks and hypotheses, errors on unknown keys', () => {

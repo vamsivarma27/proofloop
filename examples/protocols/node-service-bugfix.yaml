@@ -1,0 +1,24 @@
+# Node service bug protocol: smaller than the built-in bug protocol, still proves the regression test fails first.
+schemaVersion: 1
+id: node-service-bugfix
+version: 1.0.0
+title: Node service bugfix
+description: Reproduce, add a regression test that fails first, fix, verify.
+engine: ">=0.7.0"
+mode: existing-repo
+defaultRisk: low
+retry: { maxRepairAttempts: 2, stopOnIdenticalFailure: true }
+requiredArtifacts: [reproduction-result, root-cause, regression-test, verification-report]
+gates:
+  - { id: regression-test, kind: unit, required: true }
+  - { id: lint, kind: lint, required: true }
+  - { id: unit, kind: unit, required: true }
+phases:
+  - { id: intake, title: Capture observed and expected behavior }
+  - { id: reconnaissance, title: Reproduce first }
+  - { id: plan, title: Smallest correct fix }
+  - { id: approval, title: Human plan approval }
+  - { id: implementation, title: Test then fix }
+  - { id: verification, title: Run gates, gates: [regression-test, lint, unit] }
+  - { id: repair, title: Bounded repair loop }
+  - { id: delivery, title: Open the pull request with evidence }

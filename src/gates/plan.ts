@@ -57,3 +57,6 @@ export function buildGatePlan(
 export const TEST_INTEGRITY_GATE: GatePlanEntry = { gateId: 'test-integrity', kind: 'custom', required: true, command: 'builtin:test-integrity', source: 'builtin' };
 
 export const AC_TRACEABILITY_GATE: GatePlanEntry = { gateId: 'ac-traceability', kind: 'custom', required: true, command: 'builtin:ac-traceability', source: 'builtin' };
+
+export const REQUIRED_ARTIFACTS_GATE: GatePlanEntry = { gateId: 'required-artifacts', kind: 'custom', required: true, command: 'builtin:required-artifacts', source: 'builtin' };
+export const MIGRATION_GATE: GatePlanEntry = { gateId: 'migration-readiness', kind: 'custom', required: true, command: 'builtin:migration-readiness', source: 'builtin' };

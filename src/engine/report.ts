@@ -37,7 +37,7 @@ export function renderReport(store: Store, runId: string, opts: { forPr?: boolea
   const plan = store.getPlanBody(runId) as (Partial<Plan> & { idea?: { oneLine: string } }) | undefined;
   const history = store.events(runId, 'transition');
   const L: string[] = [];
-  L.push(`# ProofLoop report — ${run.protocolId} (${run.id})`, '', `- State: **${run.state}**${run.blockedReason ? ` — ${run.blockedReason}` : ''}`, `- Protocol: ${run.protocolId}@${run.protocolVersion}, engine ${run.engineVersion}`, `- Risk: ${run.risk}`);
+  L.push(`# ProofLoop report — ${run.protocolId} (${run.id})`, '', `- State: **${run.state}**${run.blockedReason ? ` — ${run.blockedReason}` : ''}`, `- Protocol: ${run.protocolId}@${run.protocolVersion} (sha256 ${String(store.events(runId, 'protocol.pinned')[0]?.data.sha256 ?? 'n/a').slice(0, 12)}), plugin/engine ${run.engineVersion}`, `- Risk: ${run.risk}`);
   L.push(`- Base: \`${run.baseCommit?.slice(0, 12) ?? 'n/a'}\`, candidate: \`${run.headSha?.slice(0, 12) ?? 'n/a'}\`, branch: \`${run.activeBranch ?? 'n/a'}\``);
   L.push(`- Plan: v${run.planVersion} \`${run.currentPlanHash?.slice(0, 12) ?? 'none'}\`, approved: ${run.approvedPlanHash === run.currentPlanHash && run.approvedPlanHash ? 'yes' : '**no**'}`, '');
   const intent = plan?.intent?.summary ?? plan?.idea?.oneLine;
@@ -70,4 +70,21 @@ export function limitations(store: Store, runId: string, plan?: AnyPlan): string
   for (const e of store.events(runId, 'review.finding').filter((x) => x.data.commit === head)) out.push(`reviewer finding (${String(e.data.severity)}): ${String(e.data.summary)}`);
   for (const e of store.events(runId, 'scope.reverted')) out.push(`out-of-scope edits were reverted: ${(e.data.files as string[]).join(', ')}`);
   return out;
+}
+
+/** Operational-readiness view: what was measured, how (simulated vs live), what is unproven. */
+export function renderReadiness(store: Store, runId: string): string {
+  const run = store.getRun(runId);
+  const rep = gateReport(store, runId);
+  const ev = store.evidenceFor(runId);
+  const L = [`# Operational readiness — ${run.id}`, '', `Risk ${run.risk}; candidate \`${run.headSha?.slice(0, 12) ?? 'n/a'}\`. This summarizes recorded evidence only.`, ''];
+  L.push('## Quality and security gates', ...rep.gates.map((g) => `- ${g.gateId}: ${g.state}${g.stale ? ' (stale)' : ''}`), '');
+  const perf = ev.filter((e) => e.kind === 'perf-baseline' || e.kind === 'perf-after');
+  L.push('## Performance evidence', ...(perf.length ? perf.map((e) => `- ${e.kind}: ${String(e.summary)} [${String(e.environment)}]`) : ['- none recorded; no performance or scalability claim is supported']), '');
+  const kinds = new Set(perf.map((e) => String(e.environment).split(';')[0]));
+  if (kinds.has('simulated')) L.push('Note: simulated measurements come from synthetic load in a test environment, not production.', '');
+  if (kinds.has('live-observation')) L.push('Note: live observations come from a running environment and are not load-test results.', '');
+  const art = ev.filter((e) => String(e.kind).startsWith('artifact:')).map((e) => String(e.kind).slice(9));
+  L.push('## Recorded artifacts', ...(art.length ? [...new Set(art)].map((a) => `- ${a}`) : ['- none']), '', '## Open limitations', ...(limitations(store, runId, store.getPlanBody(runId) as AnyPlan).map((x) => `- ${x}`)));
+  return `${L.join('\n')}\n`;
 }
