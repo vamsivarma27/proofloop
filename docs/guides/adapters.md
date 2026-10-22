@@ -4,7 +4,7 @@
 |---|---|---|---|
 | GitHub | `GithubPort` (`src/github/adapter.ts`) | `GhAdapter` (gh CLI) | `githubPortContract` |
 | Agent runtime | `AgentRuntime` (`src/agent/runtime.ts`) | `ClaudeCodeRuntime`, `ScriptedRuntime` | `agentRuntimeContract` |
-| Tool composition | `ToolComposer` (`src/composer/types.ts`) | `LocalToolComposer`, disabled `CloudflareToolComposer` | `toolComposerContract` |
+| Tool composition | `ToolComposer` (`src/composer/types.ts`) | `LocalToolComposer` (Node ≥ 25), `SequentialToolComposer` (any Node, JSON steps, no sandbox), disabled `CloudflareToolComposer` | `toolComposerContract` |
 | Query plans | `QueryPlanAdapter` (`src/perf/queryplan.ts`) | `SqliteQueryPlanAdapter` | `queryPlanContract` |
 
 Write a contract test in your adapter's repo:
