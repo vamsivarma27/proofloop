@@ -38,7 +38,7 @@ All seven ✅ (`tests/browser.test.ts`, `tests/engine.test.ts`, evals browser ta
 |---|---|
 | 1–4 composition, limits, denial tests, core works without it | ✅ `tests/composer.test.ts` (sandbox tests run on Node ≥ 25; elsewhere the composer is verified to refuse) |
 | 5–6 measured comparison | ✅ `proofloop eval composer` (round trips and context bytes only; no latency/cost claim) |
-| Cloudflare adapter | ⚠ present but disabled; **not implemented** against the live service |
+| Cloudflare adapter | ⚠ present but disabled; **not implemented**: Cloudflare documents no callable API for Code Mode and marks it experimental |
 
 ## v0.6 production readiness
 All five ✅ in `tests/perf.test.ts` and `tests/gates.test.ts`. ⚠ Query-plan inspection ships for SQLite only; other databases need an adapter. ⚠ Load testing is a gate command (e.g. k6) plus a k6-summary importer; no load generator is bundled.
@@ -54,10 +54,10 @@ All four ✅ in `tests/sdk.test.ts`. ⚠ Contract kit is source-level (copy from
 | Gates cannot be silently skipped | ✅ |
 | Permissions, redaction, sandbox and threat model documented | ⚠ reviewed by a fresh-context AI reviewer (10 findings, fixed or documented); no human or third-party review |
 | CI passes on the OS/Node matrix | ✅ all jobs green on PR #9, including after the security-review fixes |
-| Evaluation reports baseline vs ProofLoop | ⚠ scripted agent only (see [evals](../guides/evals.md)) |
+| Evaluation reports baseline vs ProofLoop | ⚠ scripted agent only. A real-model mode exists (`proofloop eval --runtime claude`, capped spend) but has not been run; no real-model result is published |
 | No known critical security defects | ⚠ the one critical finding (ledger forgery) is mitigated, not eliminated: same-user code can still read the key. No penetration test |
 | Install/upgrade/uninstall/recovery/troubleshooting docs | ✅ README, compatibility, troubleshooting |
-| Release artifacts, changelog, compatibility policy | ⚠ changelog + policy + release workflow exist; nothing is tagged or published (tags are for the release owner) |
+| Release artifacts, changelog, compatibility policy | ⚠ changelog, policy and release workflow exist; `v1.0.0-rc.1` is tagged on `develop`; no `v1.0.0` (the criteria below are unmet) |
 | Known limitations explicit | ✅ |
 
-The version is `1.0.0-rc.1`: a release candidate whose remaining items are the ⏳ and ⚠ rows above.
+The version is `1.0.0-rc.1` (PR #9 merged, Apache-2.0). Remaining before 1.0.0: a human or third-party security review, a real-model evaluation result, and the Cloudflare adapter if wanted.
