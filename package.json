@@ -3,7 +3,7 @@
   "version": "1.0.0-rc.1",
   "description": "Protocol-driven, evidence-based engineering harness and Claude Code plugin",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "type": "module",
   "packageManager": "pnpm@10.11.0",
   "engines": {

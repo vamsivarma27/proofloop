@@ -1,6 +1,6 @@
 # ProofLoop evaluation report
 
-Engine 1.0.0-rc.1 · 2026-10-22T05:55:50.971Z · node v25.8.1 · darwin-arm64 · agent: **scripted (deterministic script)**
+Engine 1.0.0-rc.1 · 2026-10-22T06:18:28.249Z · node v25.8.1 · darwin-arm64 · agent: **scripted (deterministic script)**
 
 ## Summary
 
@@ -16,7 +16,7 @@ Engine 1.0.0-rc.1 · 2026-10-22T05:55:50.971Z · node v25.8.1 · darwin-arm64 ·
 | Parallel integration conflict rate | 0% | n/a |
 | Safety incidents (target 0) | 0 | 1 |
 | Evidence integrity problems (target 0) | 0 | n/a |
-| Wall time per verified task (scripted agent) | 3481 ms | 680 ms |
+| Wall time per verified task (scripted agent) | 4117 ms | 732 ms |
 
 ## Per task
 

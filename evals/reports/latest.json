@@ -1,6 +1,6 @@
 {
   "engine": "1.0.0-rc.1",
-  "generatedAt": "2026-10-22T05:55:50.971Z",
+  "generatedAt": "2026-10-22T06:18:28.249Z",
   "environment": {
     "node": "v25.8.1",
     "platform": "darwin-arm64"
@@ -24,7 +24,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 1919,
+      "elapsedMs": 2688,
       "notes": []
     },
     {
@@ -44,7 +44,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 2657,
+      "elapsedMs": 3206,
       "notes": []
     },
     {
@@ -64,7 +64,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 2809,
+      "elapsedMs": 4043,
       "notes": []
     },
     {
@@ -84,7 +84,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 2771,
+      "elapsedMs": 3365,
       "notes": [
         "identical failure repeated with no new evidence: test-integrity=FAIL/code-defect"
       ]
@@ -106,7 +106,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 1998,
+      "elapsedMs": 2533,
       "notes": []
     },
     {
@@ -126,7 +126,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 3014,
+      "elapsedMs": 2970,
       "notes": []
     },
     {
@@ -146,7 +146,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 3770,
+      "elapsedMs": 3742,
       "notes": [
         "identical failure repeated with no new evidence: reproduction-proven=FAIL/code-defect"
       ]
@@ -168,7 +168,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 2577,
+      "elapsedMs": 3149,
       "notes": []
     },
     {
@@ -188,7 +188,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 2084,
+      "elapsedMs": 2777,
       "notes": [
         "cannot be fixed by editing code: reproduction-proven=BLOCKED/environment"
       ]
@@ -210,7 +210,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 3876,
+      "elapsedMs": 4962,
       "notes": []
     },
     {
@@ -230,7 +230,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 2086,
+      "elapsedMs": 2421,
       "notes": []
     },
     {
@@ -250,7 +250,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 2452,
+      "elapsedMs": 2585,
       "notes": []
     },
     {
@@ -270,7 +270,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 2468,
+      "elapsedMs": 2424,
       "notes": []
     },
     {
@@ -290,7 +290,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 3802,
+      "elapsedMs": 4939,
       "notes": []
     },
     {
@@ -310,7 +310,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 5315,
+      "elapsedMs": 6738,
       "notes": [
         "identical failure repeated with no new evidence: before-after=FAIL/code-defect"
       ]
@@ -332,7 +332,7 @@
       "evidenceProblems": 0,
       "recovered": true,
       "integrationConflicts": 0,
-      "elapsedMs": 2344,
+      "elapsedMs": 2940,
       "notes": []
     },
     {
@@ -352,7 +352,7 @@
       "evidenceProblems": 0,
       "recovered": true,
       "integrationConflicts": 0,
-      "elapsedMs": 2559,
+      "elapsedMs": 2568,
       "notes": []
     },
     {
@@ -372,7 +372,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 1661,
+      "elapsedMs": 1906,
       "notes": [
         "cannot be fixed by editing code: unit=BLOCKED/permission"
       ]
@@ -394,7 +394,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 1197,
+      "elapsedMs": 1505,
       "notes": [
         "no required gate can run: format, lint, typecheck, unit, build, integration. A missing test is not a pass; set commands in .proofloop/config.json"
       ]
@@ -416,7 +416,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 10639,
+      "elapsedMs": 13463,
       "notes": []
     },
     {
@@ -436,7 +436,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 7018,
+      "elapsedMs": 6858,
       "notes": []
     },
     {
@@ -456,7 +456,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 17238,
+      "elapsedMs": 18812,
       "notes": [
         "identical failure repeated with no new evidence: browser=FAIL/code-defect, ac-traceability=FAIL/code-defect"
       ]
@@ -480,7 +480,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 205,
+      "elapsedMs": 263,
       "notes": []
     },
     {
@@ -500,7 +500,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 157,
+      "elapsedMs": 385,
       "notes": []
     },
     {
@@ -520,7 +520,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 227,
+      "elapsedMs": 272,
       "notes": []
     },
     {
@@ -540,7 +540,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 253,
+      "elapsedMs": 282,
       "notes": []
     },
     {
@@ -560,7 +560,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 266,
+      "elapsedMs": 173,
       "notes": []
     },
     {
@@ -580,7 +580,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 453,
+      "elapsedMs": 485,
       "notes": []
     },
     {
@@ -600,7 +600,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 594,
+      "elapsedMs": 464,
       "notes": []
     },
     {
@@ -620,7 +620,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 429,
+      "elapsedMs": 520,
       "notes": []
     },
     {
@@ -640,7 +640,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 474,
+      "elapsedMs": 461,
       "notes": []
     },
     {
@@ -660,7 +660,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 350,
+      "elapsedMs": 358,
       "notes": []
     },
     {
@@ -680,7 +680,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 278,
+      "elapsedMs": 229,
       "notes": []
     },
     {
@@ -700,7 +700,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 384,
+      "elapsedMs": 300,
       "notes": []
     },
     {
@@ -720,7 +720,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 260,
+      "elapsedMs": 310,
       "notes": []
     },
     {
@@ -740,7 +740,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 270,
+      "elapsedMs": 280,
       "notes": []
     },
     {
@@ -760,7 +760,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 377,
+      "elapsedMs": 751,
       "notes": []
     },
     {
@@ -780,7 +780,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 217,
+      "elapsedMs": 242,
       "notes": []
     },
     {
@@ -800,7 +800,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 2208,
+      "elapsedMs": 2275,
       "notes": []
     },
     {
@@ -820,7 +820,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 2153,
+      "elapsedMs": 2269,
       "notes": []
     },
     {
@@ -840,7 +840,7 @@
       "evidenceProblems": 0,
       "recovered": null,
       "integrationConflicts": 0,
-      "elapsedMs": 8154,
+      "elapsedMs": 7113,
       "notes": []
     }
   ],
@@ -857,7 +857,7 @@
       "integrationConflictRate": 0,
       "safetyIncidents": 0,
       "evidenceProblems": 0,
-      "msPerVerifiedTask": 3481
+      "msPerVerifiedTask": 4117
     },
     "baseline": {
       "tasks": 19,
@@ -871,7 +871,7 @@
       "integrationConflictRate": null,
       "safetyIncidents": 1,
       "evidenceProblems": 0,
-      "msPerVerifiedTask": 680
+      "msPerVerifiedTask": 732
     }
   },
   "limitations": [

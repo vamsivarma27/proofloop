@@ -5,6 +5,6 @@
   "description": "Protocol-driven, evidence-based engineering harness: plan, approve, implement, verify, report.",
   "author": { "name": "Vamsi Varma" },
   "repository": "https://github.com/vamsivarma27/proofloop",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "keywords": ["harness", "verification", "workflow"]
 }

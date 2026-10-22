@@ -36,4 +36,4 @@ Built in one pass from `PROOFLOOP_PRD.md`; each section maps to a roadmap releas
 - Fresh-context review found 10 issues (1 critical); fixes and residual risks in docs/security/threat-model.md.
 
 ### Known limitations
-- Cloudflare Code Mode adapter not implemented. No real-model evaluation published. Windows unsupported. License undecided.
+- Cloudflare Code Mode adapter not implemented. No real-model evaluation published. Windows unsupported. 

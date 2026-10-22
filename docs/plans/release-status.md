@@ -53,7 +53,7 @@ All four ✅ in `tests/sdk.test.ts`. ⚠ Contract kit is source-level (copy from
 | State, recovery, GitHub sync tested | ✅ (GitHub via faithful fake + live use on this repo) |
 | Gates cannot be silently skipped | ✅ |
 | Permissions, redaction, sandbox and threat model documented | ⚠ reviewed by a fresh-context AI reviewer (10 findings, fixed or documented); no human or third-party review |
-| CI passes on the OS/Node matrix | ✅ all jobs green on PR #9 (before the review fixes; re-run pending on the new commit) |
+| CI passes on the OS/Node matrix | ✅ all jobs green on PR #9, including after the security-review fixes |
 | Evaluation reports baseline vs ProofLoop | ⚠ scripted agent only (see [evals](../guides/evals.md)) |
 | No known critical security defects | ⚠ the one critical finding (ledger forgery) is mitigated, not eliminated: same-user code can still read the key. No penetration test |
 | Install/upgrade/uninstall/recovery/troubleshooting docs | ✅ README, compatibility, troubleshooting |

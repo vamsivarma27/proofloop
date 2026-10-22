@@ -6,7 +6,7 @@ A protocol-driven, evidence-based engineering harness for [Claude Code](https://
 
 **ProofLoop does not promise bug-free software or unlimited capacity.** It lowers risk, catches defects earlier, makes risk visible, and refuses to present unverified work as complete.
 
-Status: **1.0.0-rc.1, private pre-release.** License is undecided (`UNLICENSED` for now; Apache-2.0 is the recommendation in the PRD). Platforms: macOS and Linux. Windows is not validated.
+Status: **1.0.0-rc.1, private pre-release.** License: Apache-2.0 (repository is private for now). Platforms: macOS and Linux. Windows is not validated.
 
 ## How it works
 
