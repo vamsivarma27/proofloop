@@ -1,0 +1,34 @@
+schemaVersion: 1
+id: feature
+version: 1.0.0
+title: Feature protocol
+description: Add a user-facing capability to an existing repository with an approved plan and verified gates.
+engine: ">=0.1.0"
+mode: existing-repo
+defaultRisk: medium
+retry: { maxRepairAttempts: 3, stopOnIdenticalFailure: true }
+requiredArtifacts: [intent-brief, impact-map, acceptance-criteria, implementation-plan, dependency-graph, test-plan, approved-plan-record]
+personas: [ordinary-user, unauthorized-user]
+gates:
+  - { id: format, kind: format, required: false }
+  - { id: lint, kind: lint, required: true }
+  - { id: typecheck, kind: typecheck, required: true }
+  - { id: unit, kind: unit, required: true }
+  - { id: build, kind: build, required: true }
+  - { id: integration, kind: integration, required: true, minRisk: medium }
+  - { id: browser, kind: browser, required: true, minRisk: high }
+  - { id: security-scan, kind: security-scan, required: true, minRisk: high }
+  - { id: migration, kind: migration, required: true, minRisk: high }
+phases:
+  - { id: intake, title: Classify the request }
+  - { id: clarify, title: Clarify intent and constraints }
+  - { id: reconnaissance, title: Inspect repository and conventions }
+  - { id: impact, title: Map impact and risk }
+  - { id: plan, title: Plan and design tests, requiredArtifacts: [implementation-plan, test-plan] }
+  - { id: approval, title: Human plan approval, requiredArtifacts: [approved-plan-record] }
+  - { id: implementation, title: Implement in an isolated worktree }
+  - { id: verification, title: Run required gates, gates: [format, lint, typecheck, unit, build, integration, browser, security-scan, migration] }
+  - { id: repair, title: Bounded repair loop }
+  - { id: review, title: Independent fresh-context review }
+  - { id: delivery, title: Open the pull request with evidence }
+  - { id: retrospective, title: Propose harness improvements }

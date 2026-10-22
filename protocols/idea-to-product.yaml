@@ -1,0 +1,26 @@
+schemaVersion: 1
+id: idea-to-product
+version: 1.0.0
+title: Idea-to-Product protocol
+description: Discovery and blueprint with cited research and visible assumptions, then approved roadmap issues.
+engine: ">=0.2.0"
+mode: idea-to-product
+defaultRisk: medium
+retry: { maxRepairAttempts: 2, stopOnIdenticalFailure: true }
+requiredArtifacts: [product-blueprint, risk-register, roadmap, adr]
+gates:
+  - { id: blueprint-valid, kind: custom, required: true, description: "Blueprint schema, citations and DAG validate" }
+  - { id: assumptions-visible, kind: custom, required: true }
+phases:
+  - { id: intake, title: Capture the business outcome }
+  - { id: clarify, title: Adaptive one-question-at-a-time interview }
+  - { id: reconnaissance, title: "Research with cited, dated sources" }
+  - { id: impact, title: "Separate facts, assumptions and recommendations" }
+  - { id: plan, title: "Personas, journeys, MVP, stack, data and API, roadmap", requiredArtifacts: [product-blueprint, roadmap] }
+  - { id: approval, title: Human blueprint approval before bulk issue creation }
+  - { id: implementation, title: Create the GitHub hierarchy and first milestone }
+  - { id: verification, title: Validate the blueprint and DAG, gates: [blueprint-valid, assumptions-visible] }
+  - { id: repair, title: Fix validation errors }
+  - { id: review, title: Review assumptions and stack against requirements }
+  - { id: delivery, title: Publish roadmap issues }
+  - { id: retrospective, title: Record decisions }

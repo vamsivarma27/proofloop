@@ -1,0 +1,31 @@
+schemaVersion: 1
+id: refactor
+version: 1.0.0
+title: Refactor protocol
+description: Change structure without changing behavior; detect contract, export, schema and config drift.
+engine: ">=0.1.0"
+mode: existing-repo
+defaultRisk: medium
+retry: { maxRepairAttempts: 3, stopOnIdenticalFailure: true }
+requiredArtifacts: [behavior-baseline, architecture-target, scope, regression-plan]
+gates:
+  - { id: baseline-green, kind: unit, required: true, description: Tests green before the refactor starts }
+  - { id: lint, kind: lint, required: true }
+  - { id: typecheck, kind: typecheck, required: true }
+  - { id: unit, kind: unit, required: true }
+  - { id: build, kind: build, required: true }
+  - { id: integration, kind: integration, required: true, minRisk: medium }
+  - { id: contract-drift, kind: custom, required: true, description: "Public exports, API contracts, schema and config unchanged" }
+phases:
+  - { id: intake, title: Capture refactor goal and scope }
+  - { id: clarify, title: Confirm behavior must not change }
+  - { id: reconnaissance, title: Record behavior baseline }
+  - { id: impact, title: Map public surface }
+  - { id: plan, title: Plan incremental steps }
+  - { id: approval, title: Human plan approval }
+  - { id: implementation, title: Refactor in small steps }
+  - { id: verification, title: Prove behavior preserved, gates: [baseline-green, lint, typecheck, unit, build, integration, contract-drift] }
+  - { id: repair, title: Bounded repair loop }
+  - { id: review, title: Independent review }
+  - { id: delivery, title: Open the pull request with evidence }
+  - { id: retrospective, title: Propose harness improvements }

@@ -1,0 +1,26 @@
+schemaVersion: 1
+id: troubleshooting
+version: 1.0.0
+title: Troubleshooting protocol
+description: Read-only evidence first, ranked hypotheses, least destructive experiments, verified recovery.
+engine: ">=0.1.0"
+mode: existing-repo
+defaultRisk: medium
+retry: { maxRepairAttempts: 2, stopOnIdenticalFailure: true }
+requiredArtifacts: [timeline, observations, ranked-hypotheses, diagnostic-commands, cause-or-uncertainty, follow-up-checks]
+gates:
+  - { id: evidence-preserved, kind: custom, required: true, description: Pre-fix evidence recorded }
+  - { id: recovery-verified, kind: custom, required: true }
+phases:
+  - { id: intake, title: "Capture symptom, window and environment" }
+  - { id: clarify, title: Ask for logs and affected services }
+  - { id: reconnaissance, title: Collect read-only evidence }
+  - { id: impact, title: "Classify code, environment, credential, provider or flake" }
+  - { id: plan, title: Rank hypotheses and choose experiments }
+  - { id: approval, title: Approve any mutating remediation }
+  - { id: implementation, title: Apply remediation }
+  - { id: verification, title: Verify recovery, gates: [evidence-preserved, recovery-verified] }
+  - { id: repair, title: Bounded repair loop }
+  - { id: review, title: Review conclusion against evidence, skipped: { reason: Evidence ledger is checked by the engine; reviewer is optional for read-only diagnosis } }
+  - { id: delivery, title: Report cause or explicit uncertainty }
+  - { id: retrospective, title: Propose harness improvements }
