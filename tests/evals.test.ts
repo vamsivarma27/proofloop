@@ -21,6 +21,16 @@ describe('eval suite shape (PRD 18)', () => {
   });
 });
 
+describe('schemas passed to the Claude CLI', () => {
+  it('omit the draft 2020-12 $schema URI the CLI validator rejects (found by the first real run)', async () => {
+    const { planJsonSchema, findingsJsonSchema } = await import('../src/engine/prompts');
+    for (const s of [planJsonSchema(), findingsJsonSchema()]) {
+      expect(s).not.toHaveProperty('$schema');
+      expect(JSON.stringify(s)).toContain('properties');
+    }
+  });
+});
+
 describe('real-model mode wiring (no model is called here)', () => {
   it('only offers tasks that need no scripted crash, recorder, browser or destructive setup', () => {
     const ids = ALL_TASKS.filter(REAL_ELIGIBLE).map((t) => t.id);
@@ -44,6 +54,9 @@ describe('real-model mode wiring (no model is called here)', () => {
     expect(rep.baseline[0]).toMatchObject({ mode: 'baseline', correct: true });
     expect(rep.totalCostUsd).toBeGreaterThan(0);
     expect(renderRealMarkdown(rep)).toContain('real-model evaluation report');
+    const again = await runRealEvals({ only: ['feature-1'], perTaskUsd: 1, totalUsd: 5, runtime: rt, reuse: rep });
+    expect(again.baseline[0]).toEqual(rep.baseline[0]);
+    expect(again.totalCostUsd).toBeLessThan(rep.totalCostUsd + rep.totalCostUsd); // baseline spend is carried, not paid twice
     const none = await runRealEvals({ only: ['feature-1'], perTaskUsd: 1, totalUsd: 0, runtime: rt });
     expect(none.proofloop).toEqual([]);
   });

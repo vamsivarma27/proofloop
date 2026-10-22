@@ -3,6 +3,7 @@ import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { ToolHost, byteLen, truncateValue } from './host';
 import { RUNNER_SOURCE } from './runner-source';
 import { buildTools, type ToolDeps } from './tools';
 import { type CallAudit, type ComposeOptions, type ComposeResult, DEFAULT_LIMITS, type ToolComposer, type ToolContext, type ToolDef } from './types';
@@ -16,24 +17,18 @@ export function sandboxSupport(): { ok: boolean; reason?: string } {
   return { ok: true };
 }
 
-const byteLen = (v: unknown): number => Buffer.byteLength(JSON.stringify(v) ?? '');
-
-function truncateValue(v: unknown, max: number): { value: unknown; truncated: boolean } {
-  const s = JSON.stringify(v) ?? 'null';
-  if (Buffer.byteLength(s) <= max) return { value: v, truncated: false };
-  return { value: `${s.slice(0, max)}…[truncated]`, truncated: true };
-}
-
 export class LocalToolComposer implements ToolComposer {
   readonly name = 'local-sandbox';
   private readonly tools: Map<string, ToolDef>;
-  private received = 0;
+  private readonly host: ToolHost;
+  private counter = { n: 0 };
   constructor(
     private readonly ctx: ToolContext,
     deps: ToolDeps & { tools?: ToolDef[]; audit?: (call: CallAudit) => void } = {},
     private readonly onAudit: (call: CallAudit) => void = deps.audit ?? (() => undefined),
   ) {
     this.tools = new Map((deps.tools ?? buildTools(deps)).map((t) => [t.name, t]));
+    this.host = new ToolHost(this.tools, ctx, onAudit);
   }
 
   available(): { ok: boolean; reason?: string } {
@@ -46,7 +41,7 @@ export class LocalToolComposer implements ToolComposer {
 
   async run(program: string, opts: ComposeOptions = {}): Promise<ComposeResult> {
     const started = Date.now();
-    this.received = 0;
+    this.counter = { n: 0 };
     const limits = { ...DEFAULT_LIMITS, ...opts.limits };
     const support = this.available();
     const calls: CallAudit[] = [];
@@ -113,32 +108,8 @@ export class LocalToolComposer implements ToolComposer {
     if (msg.type === 'done') return setVerdict({ ok: true, value: msg.value });
     if (msg.type === 'error') return setVerdict({ ok: false, error: String(msg.message) });
     if (msg.type !== 'call') return;
-    const id = msg.id as number;
-    const reply = (m: object): void => void child.stdin?.write(`${JSON.stringify({ type: 'result', id, ...m })}\n`);
-    // count at receipt: a burst of concurrent calls must not slip past a limit that only counts completed calls
-    if (++this.received > limits.maxCalls) return kill(`call limit of ${limits.maxCalls} exceeded`);
-    const name = String(msg.name);
-    const t0 = Date.now();
-    const audit = (a: Omit<CallAudit, 'tool' | 'ms'>): void => {
-      const rec = { tool: name, ms: Date.now() - t0, ...a };
-      calls.push(rec);
-      this.onAudit(rec);
-    };
-    const tool = this.tools.get(name);
-    if (!tool) return (audit({ ok: false, bytes: 0, truncated: false, denied: 'unknown tool' }), reply({ ok: false, error: `unknown tool ${name}` }));
-    if (tool.mode === 'write' && !writes.has(name)) return (audit({ ok: false, bytes: 0, truncated: false, denied: 'write not permitted' }), reply({ ok: false, error: `${name} is a mutating tool and was not authorized for this run` }));
-    const parsed = tool.input.safeParse(msg.args);
-    if (!parsed.success) return (audit({ ok: false, bytes: 0, truncated: false, denied: 'invalid input' }), reply({ ok: false, error: `invalid input for ${name}: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}` }));
-    try {
-      const out = await Promise.race([tool.handler(parsed.data, this.ctx), new Promise<never>((_r, rej) => setTimeout(() => rej(new Error(`${name} timed out`)), tool.timeoutMs))]);
-      const cut = truncateValue(out, tool.maxOutputBytes);
-      const bytes = byteLen(cut.value);
-      addIn(bytes);
-      audit({ ok: true, bytes, truncated: cut.truncated });
-      reply({ ok: true, value: cut.value });
-    } catch (e) {
-      audit({ ok: false, bytes: 0, truncated: false, denied: 'handler error' });
-      reply({ ok: false, error: redact(e instanceof Error ? e.message : String(e)) });
-    }
+    const out = await this.host.call(String(msg.name), msg.args, { limits, writes, calls, addBytesIn: addIn, received: this.counter });
+    if ('violation' in out) return kill(out.violation);
+    child.stdin?.write(`${JSON.stringify({ type: 'result', id: msg.id, ...out.reply })}\n`);
   }
 }

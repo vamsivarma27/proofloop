@@ -151,3 +151,71 @@ sandboxed('sandbox robustness (#9)', () => {
     writeFileSync(join(root, 'noop'), '');
   });
 });
+
+describe('second independent review fixes', () => {
+  it('editing or deleting gate_plan rows removes the required gates instead of weakening them (#1)', () => {
+    const { store } = makeStore();
+    const run = newRun(store);
+    store.setGatePlan(run.id, [{ gateId: 'unit', kind: 'unit', required: true, command: 'x' }, { gateId: 'lint', kind: 'lint', required: true, command: 'y' }]);
+    expect(store.getGatePlan(run.id).length).toBe(2);
+    store.db.prepare(`UPDATE gate_plan SET required = 0 WHERE gate_id = 'unit'`).run();
+    expect(store.getGatePlan(run.id).length).toBe(0);
+    expect(store.forgedPlanRows(run.id)).toBe(2);
+    store.setGatePlan(run.id, [{ gateId: 'unit', kind: 'unit', required: true, command: 'x' }, { gateId: 'lint', kind: 'lint', required: true, command: 'y' }]);
+    store.db.prepare(`DELETE FROM gate_plan WHERE gate_id = 'lint'`).run();
+    expect(store.getGatePlan(run.id).length).toBe(0);
+  });
+
+  it('a gate signature covers the evidence content hashes it cites (#1)', () => {
+    const { store } = makeStore();
+    const run = newRun(store);
+    toRunning(store, run.id);
+    const evd = store.addEvidence({ taskRunId: run.id, kind: 'gate-log', uri: 'u', checksum: 'real', environment: 't', summary: 's', redactionStatus: 'redacted' });
+    store.recordGateResult({ taskRunId: run.id, gateId: 'unit', state: 'PASS', required: true, commandOrAssertion: 'x', exitCode: 0, evidenceIds: [evd], commitSha: 'abc123', startedAtUtc: 't', finishedAtUtc: 't' });
+    expect(store.forgedGateRows(run.id)).toBe(0);
+    store.db.exec('DROP TRIGGER evidence_artifact_no_update');
+    store.db.prepare(`UPDATE evidence_artifact SET checksum = 'rewritten' WHERE id = ?`).run(evd);
+    expect(store.forgedGateRows(run.id)).toBe(1);
+  });
+
+  it('the ledger key is created exclusively and a short or empty key is refused (#6)', async () => {
+    const { mkdtempSync, writeFileSync, statSync, readFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { fileSigner } = await import('../src/state/signer');
+    const path = join(mkdtempSync(join(tmpdir(), 'pl-key-')), 'k.key');
+    const a = fileSigner(path);
+    const b = fileSigner(path);
+    expect(b.sign(['x'])).toBe(a.sign(['x']));
+    expect(statSync(path).mode & 0o077).toBe(0);
+    expect(readFileSync(path, 'utf8').length).toBeGreaterThanOrEqual(64);
+    writeFileSync(path, '');
+    expect(() => fileSigner(path)).toThrow(/empty or too short/);
+  });
+
+  it('tool results are truncated by bytes and the CLI schema omits $schema', async () => {
+    const { truncateValue } = await import('../src/composer/host');
+    const cut = truncateValue('é'.repeat(500), 100);
+    expect(cut.truncated).toBe(true);
+    expect(Buffer.byteLength(String(cut.value))).toBeLessThan(130);
+  });
+});
+
+describe('real-eval cost controls (#4, #5)', () => {
+  it('rejects non-finite or non-positive caps', async () => {
+    const { runRealEvals } = await import('../src/evals/real');
+    const rt = new (await import('../src/agent/runtime')).ScriptedRuntime(() => ({}));
+    await expect(runRealEvals({ perTaskUsd: Number.NaN, totalUsd: 5, runtime: rt })).rejects.toThrow(/--max-usd/);
+    await expect(runRealEvals({ perTaskUsd: 1, totalUsd: -1, runtime: rt })).rejects.toThrow(/--total-usd/);
+    await expect(runRealEvals({ perTaskUsd: 0, totalUsd: 5, runtime: rt })).rejects.toThrow(/--max-usd/);
+  });
+
+  it('a failing arm is recorded as an error at worst-case cost instead of aborting the run', async () => {
+    const { runRealEvals } = await import('../src/evals/real');
+    const { ScriptedRuntime } = await import('../src/agent/runtime');
+    const rt = new ScriptedRuntime(() => { throw new Error('model unavailable'); });
+    const rep = await runRealEvals({ only: ['feature-1'], perTaskUsd: 1, totalUsd: 10, runtime: rt });
+    expect(rep.proofloop[0]).toMatchObject({ mode: 'proofloop' });
+    expect(rep.baseline[0]!.correct).toBe(false);
+    expect(rep.totalCostUsd).toBeGreaterThanOrEqual(1);
+  });
+});

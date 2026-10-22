@@ -84,7 +84,7 @@ export async function runCli(argv: string[], c: CliEnv): Promise<number> {
     args: argv,
     allowPositionals: true,
     strict: false,
-    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' }, runtime: { type: 'string' }, 'max-usd': { type: 'string' }, 'total-usd': { type: 'string' }, model: { type: 'string' }, meta: { type: 'string' }, topic: { type: 'string' }, text: { type: 'string' } },
+    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' }, runtime: { type: 'string' }, 'max-usd': { type: 'string' }, 'reuse-baseline': { type: 'string' }, 'total-usd': { type: 'string' }, model: { type: 'string' }, meta: { type: 'string' }, topic: { type: 'string' }, text: { type: 'string' } },
   });
   const [cmd, ...rest] = positionals;
   const json = values.json === true;
@@ -330,7 +330,8 @@ async function evalCmd(c: CliEnv, rest: string[], v: Record<string, string | boo
   }
   const only = rest.length ? rest : undefined;
   if (v.runtime === 'claude') {
-    const real = await runRealEvals({ only, perTaskUsd: Number(v['max-usd'] ?? 1), totalUsd: Number(v['total-usd'] ?? 10), model: v.model as string | undefined, log: (l) => c.io.err(`${l}\n`) });
+    const reuse = v['reuse-baseline'] ? (JSON.parse(readFileSync(String(v['reuse-baseline']), 'utf8')) as Parameters<typeof runRealEvals>[0]['reuse']) : undefined;
+    const real = await runRealEvals({ reuse, only, perTaskUsd: Number(v['max-usd'] ?? 1), totalUsd: Number(v['total-usd'] ?? 10), model: v.model as string | undefined, log: (l) => c.io.err(`${l}\n`) });
     writeFileSync(join(out, 'real-model.json'), `${JSON.stringify(real, null, 2)}\n`);
     writeFileSync(join(out, 'real-model.md'), renderRealMarkdown(real));
     show(c, json, real.summary, `${renderRealMarkdown(real)}\nwritten to ${out}\n`);

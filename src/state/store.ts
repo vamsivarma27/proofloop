@@ -112,8 +112,18 @@ export class Store {
     readonly signer: Signer = fileSigner(),
   ) {}
 
-  private gateSig(r: { id: string; taskRunId: string; gateId: string; state: string; commitSha: string; seq: number; exitCode: number | null; evidenceIds: string[] }): string {
-    return this.signer.sign(['gate', r.id, r.taskRunId, r.gateId, r.state, r.commitSha, r.seq, r.exitCode, r.evidenceIds.join(',')]);
+  private checksumsOf(ids: string[]): string {
+    return JSON.stringify(ids.map((i) => [i, (this.one('SELECT checksum FROM evidence_artifact WHERE id = ?', i)?.checksum as string | undefined) ?? null]));
+  }
+
+  /** Covers the verdict, the commit, the order, and the content hashes of the evidence it cites. */
+  private gateSig(r: { id: string; taskRunId: string; gateId: string; state: string; commitSha: string; seq: number; exitCode: number | null; evidenceIds: string[]; required: boolean; command: string; category: string | null }): string {
+    return this.signer.sign(['gate', r.id, r.taskRunId, r.gateId, r.state, r.commitSha, r.seq, r.exitCode, this.checksumsOf(r.evidenceIds), r.required ? 1 : 0, r.command, r.category]);
+  }
+
+  /** A gate-plan row is signed together with the full set of gate ids, so deleting or editing any row invalidates the rest. */
+  private planSig(run: string, ids: string[], gateId: string, kind: string, required: boolean, command: string | null): string {
+    return this.signer.sign(['gate_plan', run, [...ids].sort().join('|'), gateId, kind, required ? 1 : 0, command]);
   }
 
   private approvalSig(id: string, run: string, scope: string, planHash: string | null, by: string, decision: string): string {
@@ -313,17 +323,22 @@ export class Store {
   setGatePlan(id: string, gates: Array<{ gateId: string; kind: string; required: boolean; command: string | null }>): void {
     inTransaction(this.db, () => {
       this.run('DELETE FROM gate_plan WHERE task_run_id = ?', id);
-      for (const g of gates) this.run('INSERT INTO gate_plan (task_run_id, gate_id, kind, required, command) VALUES (?,?,?,?,?)', id, g.gateId, g.kind, g.required ? 1 : 0, g.command);
+      const ids = gates.map((g) => g.gateId);
+      for (const g of gates) this.run('INSERT INTO gate_plan (task_run_id, gate_id, kind, required, command, sig) VALUES (?,?,?,?,?,?)', id, g.gateId, g.kind, g.required ? 1 : 0, g.command, this.planSig(id, ids, g.gateId, g.kind, g.required, g.command));
     });
   }
 
+  /** The whole plan or nothing: if any row fails verification the plan is void, so dropping a row cannot drop a requirement. */
   getGatePlan(id: string): Array<{ gateId: string; kind: string; required: boolean; command: string | null }> {
-    return this.all('SELECT * FROM gate_plan WHERE task_run_id = ? ORDER BY gate_id', id).map((r) => ({
-      gateId: r.gate_id as string,
-      kind: r.kind as string,
-      required: r.required === 1,
-      command: (r.command as string | null) ?? null,
-    }));
+    const rows = this.all('SELECT * FROM gate_plan WHERE task_run_id = ? ORDER BY gate_id', id);
+    const ids = rows.map((r) => r.gate_id as string);
+    const ok = rows.every((r) => r.sig === this.planSig(id, ids, r.gate_id as string, r.kind as string, r.required === 1, (r.command as string | null) ?? null));
+    return !ok ? [] : rows.map((r) => ({ gateId: r.gate_id as string, kind: r.kind as string, required: r.required === 1, command: (r.command as string | null) ?? null }));
+  }
+
+  forgedPlanRows(id: string): number {
+    const n = this.all('SELECT 1 FROM gate_plan WHERE task_run_id = ?', id).length;
+    return this.getGatePlan(id).length === n ? 0 : n;
   }
 
   addEvidence(e: EvidenceInput): string {
@@ -344,7 +359,7 @@ export class Store {
     return inTransaction(this.db, () => {
       const seq = Number((this.one('SELECT COALESCE(MAX(seq),0) AS m FROM gate_result WHERE task_run_id = ?', g.taskRunId) as Row).m) + 1;
       const id = newId('gate');
-      const sig = this.gateSig({ id, taskRunId: g.taskRunId, gateId: g.gateId, state: g.state, commitSha: g.commitSha, seq, exitCode: g.exitCode, evidenceIds: g.evidenceIds });
+      const sig = this.gateSig({ id, taskRunId: g.taskRunId, gateId: g.gateId, state: g.state, commitSha: g.commitSha, seq, exitCode: g.exitCode, evidenceIds: g.evidenceIds, required: g.required, command: g.commandOrAssertion, category: g.failureCategory ?? null });
       this.run(
         `INSERT INTO gate_result (id, task_run_id, gate_id, state, required, command_or_assertion, exit_code, evidence_ids, commit_sha, started_at_utc, finished_at_utc, failure_category, fingerprint, seq, sig)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -378,7 +393,7 @@ export class Store {
 
   private validGate(r: Row): boolean {
     const evidenceIds = JSON.parse(r.evidence_ids as string) as string[];
-    return r.sig === this.gateSig({ id: r.id as string, taskRunId: r.task_run_id as string, gateId: r.gate_id as string, state: r.state as string, commitSha: r.commit_sha as string, seq: r.seq as number, exitCode: (r.exit_code as number | null) ?? null, evidenceIds });
+    return r.sig === this.gateSig({ id: r.id as string, taskRunId: r.task_run_id as string, gateId: r.gate_id as string, state: r.state as string, commitSha: r.commit_sha as string, seq: r.seq as number, exitCode: (r.exit_code as number | null) ?? null, evidenceIds, required: r.required === 1, command: r.command_or_assertion as string, category: (r.failure_category as string | null) ?? null });
   }
 
   /** Gate rows whose signature does not verify: evidence of tampering with the database. */

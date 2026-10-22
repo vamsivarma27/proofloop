@@ -14,7 +14,7 @@ export interface IntegrityProblem {
 export function verifyEvidenceIntegrity(store: Store, runId: string): IntegrityProblem[] {
   const run = store.getRun(runId);
   const problems: IntegrityProblem[] = [];
-  const forged = store.forgedGateRows(runId) + store.forgedApprovalRows(runId);
+  const forged = store.forgedGateRows(runId) + store.forgedApprovalRows(runId) + store.forgedPlanRows(runId);
   if (forged > 0) problems.push({ evidenceId: 'ledger', problem: `${forged} ledger row(s) failed signature verification: the state database was modified outside ProofLoop` });
   const byId = new Map(store.evidenceFor(runId).map((e) => [e.id as string, e]));
   for (const g of gateReport(store, runId).gates.filter((x) => x.required)) {

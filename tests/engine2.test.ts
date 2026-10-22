@@ -209,6 +209,14 @@ describe('bug protocol', () => {
     expect(e.d.store.gateHistory(runId, 'reproduction-proven').at(-1)!.state).toBe('PASS');
   });
 
+  it('uses the approved plan\'s regression test command as the gate without an explicit gateCommands entry (found by the real-model run)', async () => {
+    const plan = bugPlan();
+    plan.gateCommands = {};
+    const { final, runId, e } = await runBug(plan, (req) => (req.prompt.includes('task-1') ? write(req.cwd, 'bug.check.js', BUG_CHECK) : write(req.cwd, 'fix.txt', 'fixed')));
+    expect(final.state).toBe('PR_OPEN');
+    expect(String(e.d.store.evidenceFor(runId).find((x) => x.kind === 'reproduction')!.summary)).toMatch(/^FAIL/);
+  });
+
   it('rejects a regression test that already passes before the fix', async () => {
     const plan = bugPlan();
     plan.tasks[0]!.fileScopes = ['bug.check.js', 'fix.txt'];
