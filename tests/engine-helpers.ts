@@ -64,3 +64,27 @@ export async function approveAndRun(e: Engine, intent = 'Add the feature file'):
 }
 
 export { tmp };
+
+export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+export async function waitFor(cond: () => boolean, ms = 4000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > end) throw new Error('waitFor timed out: tasks did not run concurrently');
+    await sleep(10);
+  }
+}
+
+export const task = (id: string, scopes: string[], deps: string[] = [], ac = 'AC-1') => ({
+  id, title: `Do ${id}`, description: `implement ${id}`, dependencies: deps, fileScopes: scopes, acceptanceCriteria: [ac], risk: 'medium' as const, doneWhen: 'checks pass',
+});
+
+export async function bareRemote(root: string): Promise<string> {
+  const { Git } = await import('../src/git/git');
+  const remote = tmp();
+  const git = new Git();
+  await git.run(remote, ['init', '-q', '--bare', '-b', 'main']);
+  await git.run(root, ['remote', 'add', 'origin', remote]);
+  await git.run(root, ['push', '-q', 'origin', 'main']);
+  return remote;
+}

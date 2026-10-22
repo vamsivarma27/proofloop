@@ -45,6 +45,8 @@ function reclaimInterrupted(d: EngineDeps, runId: string): void {
     d.store.setNodeState(runId, n.id, 'PENDING');
     d.store.putKey(`interrupted:${runId}:${n.id}`, '1');
   }
+  // an explicit human resume is the retry decision for tasks that failed or conflicted earlier
+  for (const n of d.store.nodes(runId).filter((x) => x.state === 'FAILED' || x.state === 'BLOCKED')) d.store.setNodeState(runId, n.id, 'PENDING');
   for (const l of d.store.nodes(runId).map((n) => d.store.getLease(runId, n.id)).filter((l) => l?.state === 'ACTIVE')) {
     const pid = Number(/^w-(\d+)-/.exec(l!.workerId)?.[1]);
     if (!isPidAlive(pid)) d.store.releaseAnyLease(runId, l!.taskNodeId);
