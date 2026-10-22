@@ -1,6 +1,12 @@
 # Changelog
 
-## 1.0.0-rc.1 — unreleased (feature/proofloop-v1)
+## 1.0.0-rc.2
+- Real-model evaluation mode (`proofloop eval --runtime claude`), first run published; it found two ProofLoop bugs (plan schema rejected by the CLI; regression-test command not derived from the approved plan), both fixed.
+- Cloudflare bridge to a user-deployed Worker (own contract, double opt-in, local-mock-tested only) over a shared `ToolHost`.
+- Second fresh-context security review: gate plan and evidence hashes are now signed, exclusive key creation, bridge refuses redirects and oversized responses, per-run call counters, byte-accurate truncation, cost-cap hardening.
+- Apache-2.0.
+
+## 1.0.0-rc.1 — feature/proofloop-v1
 
 Built in one pass from `PROOFLOOP_PRD.md`; each section maps to a roadmap release.
 

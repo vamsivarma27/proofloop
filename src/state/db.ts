@@ -88,6 +88,9 @@ const MIGRATIONS: readonly string[] = [
   ALTER TABLE gate_result ADD COLUMN sig TEXT;
   ALTER TABLE approval ADD COLUMN sig TEXT;
   `,
+  `
+  ALTER TABLE gate_plan ADD COLUMN sig TEXT;
+  `,
 ];
 
 export function openDb(path: string): Db {

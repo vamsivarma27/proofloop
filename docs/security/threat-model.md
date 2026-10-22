@@ -22,6 +22,7 @@ Source code and history; credentials in the environment and `~/.config` (gh, Cla
 | Out-of-scope or protected-path edits (`.git`, `.env`, CI config, keys) | post-step scope enforcement reverts them; write denylist; PreToolUse hook denies | `engine`, `cli`, `policy` |
 | Destructive/production command | shell operators rejected; destructive/critical/network patterns need approval scoped to the exact command; allowlist cannot launder them; production environment blocks gates without `production:<gate>` approval | `policy`, `gates`, `perf` |
 | Secrets leak into logs, evidence or GitHub | redaction on every persisted string; scrubbed child environments; secret-shaped files unreadable; tests assert a canary secret never reaches artifacts | `gates`, `evals` |
+| Repository content sent to a third party (Cloudflare bridge) | off by default; needs `PROOFLOOP_CODEMODE_CLOUDFLARE=1` and an explicit data-flow acknowledgement; https/token required for remote Workers; results are bounded and redacted before sending | `cloudflare` |
 | Malicious model-written program (Code Mode) | Node permission model (no write/spawn/net), empty env, validated tool calls, limits, write tools opt-in | `composer` |
 | Stale or forged evidence | evidence stores commit + checksum; delivery recomputes checksums and rejects other commits; append-only triggers | `engine`, `gates` |
 | Duplicate GitHub writes after retries | marker-based idempotency + outbox; outages are reported as queued, not synced | `github` |

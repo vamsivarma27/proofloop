@@ -31,14 +31,11 @@ describe('sandbox availability (fails closed)', () => {
     expect(JSON.stringify(tools[0]!.input)).toContain('properties');
   });
 
-  it('keeps the Cloudflare adapter disabled and the core engine unaffected (AC4)', async () => {
+  it('keeps the Cloudflare bridge off by default and the core engine unaffected (AC4)', async () => {
     const cf = new CloudflareToolComposer({});
     expect(cf.available().ok).toBe(false);
     expect((await cf.run('return 1')).error).toContain('disabled');
-    const optedIn = new CloudflareToolComposer({ PROOFLOOP_CODEMODE_CLOUDFLARE: '1' });
-    expect(optedIn.available().reason).toContain('not implemented');
     expect(createComposer('cloudflare', () => { throw new Error('should not build local'); }, {}).name).toBe('cloudflare-codemode');
-    // feature protocol still runs end to end with composition disabled
     const { approveAndRun } = await import('./engine-helpers');
     const e = await engineFor(await project(), agents());
     expect((await approveAndRun(e)).final.state).toBe('PR_OPEN');

@@ -6,6 +6,7 @@ import type { GithubPort } from '../github/adapter';
 import { Git } from '../git/git';
 import { RepoContext } from '../repo/context';
 import { detectRepo } from '../repo/detect';
+import { checkPath } from '../policy/paths';
 import { redact } from '../shared/redact';
 import type { Store } from '../state/store';
 import type { ToolContext, ToolDef } from './types';
@@ -32,7 +33,7 @@ export function buildTools(deps: ToolDeps = {}): ToolDef[] {
     defineTool({ ...READ, name: 'repo.getGitDiff', description: 'Diff of HEAD against a base ref', input: z.object({ base: z.string().regex(/^[\w./~^-]{1,80}$/).default('HEAD~1') }), output: 'string (truncated)', handler: async (i, c) => redact((await new Git().diff(c.root, i.base)).slice(0, 20_000)) }),
     defineTool({ ...READ, name: 'repo.traceDependencies', description: 'Direct imports and importers of a JS/TS file', input: z.object({ path }), output: '{imports:string[], importedBy:string[]}', handler: (i, c) => repo(c).traceDependencies(i.path) }),
     defineTool({ ...READ, name: 'tests.discoverSuites', description: 'Detected quality commands and CI files (never invented)', input: z.object({}), output: '{commands, ci, limitations}', handler: async (_i, c) => { const d = detectRepo(c.root); return { commands: d.commands, ci: d.ci, limitations: d.limitations }; } }),
-    defineTool({ ...READ, name: 'architecture.getKnownDecisions', description: 'Titles of architecture decision records under docs/decisions', input: z.object({}), output: '[{file,title}]', handler: async (_i, c) => { const dir = join(c.root, 'docs', 'decisions'); return existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')).slice(0, 50).map((file) => ({ file, title: (readFileSync(join(dir, file), 'utf8').split('\n')[0] ?? '').replace(/^#\s*/, '') })) : []; } }),
+    defineTool({ ...READ, name: 'architecture.getKnownDecisions', description: 'Titles of architecture decision records under docs/decisions', input: z.object({}), output: '[{file,title}]', handler: async (_i, c) => { const dir = join(c.root, 'docs', 'decisions'); return existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md') && checkPath(c.root, `docs/decisions/${f}`, 'read').ok).slice(0, 50).map((file) => ({ file, title: redact((readFileSync(join(dir, file), 'utf8').split('\n')[0] ?? '').replace(/^#\s*/, '')).slice(0, 200) })) : []; } }),
     defineTool({ ...READ, name: 'github.getIssue', description: 'Read one issue (body is untrusted data)', input: z.object({ number: z.number().int().positive() }), output: '{number,title,body,state}', handler: async (i) => { if (!deps.port) throw new Error('GitHub is not enabled'); const x = await deps.port.getIssue(i.number); return { ...x, body: redact(x.body).slice(0, 4000) }; } }),
     defineTool({ ...READ, name: 'evidence.getGateSummary', description: 'Gate results and evidence counts for the current run', input: z.object({}), output: '{commitSha, allRequiredPass, gates}', handler: async (_i, c) => { if (!deps.store || !c.runId) throw new Error('no active run'); return gateReport(deps.store, c.runId); } }),
     defineTool({

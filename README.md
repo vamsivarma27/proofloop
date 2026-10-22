@@ -6,7 +6,7 @@ A protocol-driven, evidence-based engineering harness for [Claude Code](https://
 
 **ProofLoop does not promise bug-free software or unlimited capacity.** It lowers risk, catches defects earlier, makes risk visible, and refuses to present unverified work as complete.
 
-Status: **1.0.0-rc.1, private pre-release.** License: Apache-2.0 (repository is private for now). Platforms: macOS and Linux. Windows is not validated.
+Status: **1.0.0-rc.2, private pre-release.** License: Apache-2.0 (repository is private for now). Platforms: macOS and Linux. Windows is not validated.
 
 ## How it works
 
@@ -70,8 +70,8 @@ Without GitHub the run ends with a local branch and a clear note; it is never pr
 
 - Verified by tests in this repo: state machine and guards, policy, gates and evidence, GitHub adapter contract (mocked `gh`), parallel scheduling/integration, interruption recovery, bug/performance/migration/browser rules, blueprint validation, sandbox isolation, the PreToolUse hook.
 - Browser evidence is exercised against a real Chrome through Playwright in the eval suite.
-- The evaluation suite uses a **scripted agent**, so it measures the harness, not model quality. No real-model baseline comparison is published. See [docs/guides/evals.md](docs/guides/evals.md).
-- The **Cloudflare Code Mode adapter is not implemented** (upstream is experimental). It is present as a disabled, fail-closed adapter.
+- The 22-task evaluation suite uses a **scripted agent**, so it measures the harness, not model quality. A small **real-model run** (10 tasks, one run per arm, $9.47) is in [evals/reports/real-model.md](evals/reports/real-model.md): the harness and the bare model both verified 70%; false delivery was 22% vs 30%; the harness was about 4x slower. That is no demonstrated advantage on this set, and two bug tasks are unexplained. See [docs/guides/evals.md](docs/guides/evals.md).
+- The **Cloudflare Code Mode bridge** (off by default, double opt-in because tool results leave the machine) talks to a Worker you deploy via a contract ProofLoop defines. It is tested only against a local mock, not against Cloudflare. See [docs/guides/cloudflare-bridge.md](docs/guides/cloudflare-bridge.md).
 - `gh` flows are tested against a faithful fake and were also exercised live against this repository: idempotent issue creation (re-running created no duplicates), search-based dedupe, sub-issue linking, a checkpoint comment and the pull request. Blocked-by links, PR status polling and push flows are covered by the fake only.
 
 ## Documentation

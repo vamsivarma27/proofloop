@@ -65,7 +65,9 @@ export async function stepPlan(d: EngineDeps, runId: string): Promise<void> {
 
 export function currentGateEntries(d: EngineDeps, runId: string): GatePlanEntry[] {
   const run = d.store.getRun(runId);
-  const commands = (d.store.getPlanBody(runId) as { gateCommands?: Record<string, string> } | undefined)?.gateCommands ?? {};
+  const body = d.store.getPlanBody(runId) as { gateCommands?: Record<string, string>; regressionTest?: { command: string } } | undefined;
+  // the approved plan's regression test command is the regression-test gate unless the plan binds it explicitly
+  const commands = { ...(body?.regressionTest ? { 'regression-test': body.regressionTest.command } : {}), ...(body?.gateCommands ?? {}) };
   const base = buildGatePlan(d.registry.get(run.protocolId), run.risk, d.detected, d.config, commands);
   const traced = riskRank(run.risk) >= riskRank('medium') && Boolean((d.store.getPlanBody(runId) as { acceptanceCriteria?: unknown } | undefined)?.acceptanceCriteria);
   const protocol = d.registry.get(run.protocolId);
