@@ -43,6 +43,16 @@ describe('feature protocol, sequential, local-only', () => {
     expect(impl.allowedTools?.some((t) => t.includes('approve'))).toBe(false);
   });
 
+  it('reviewers receive the diff and the recorded gate evidence, not the implementer narrative (v0.4 AC6)', async () => {
+    const rt = agents();
+    await approveAndRun(await engineFor(await project(), rt));
+    const prompt = rt.calls.find((c) => c.role === 'reviewer')!.prompt;
+    expect(prompt).toContain('Recorded gate evidence');
+    expect(prompt).toMatch(/unit: PASS/);
+    expect(prompt).toContain('+ok');
+    expect(prompt).not.toContain('done');
+  });
+
   it('reports repo limitations instead of inventing commands (AC4) and blocks when nothing can be verified', async () => {
     const root = await project({ scripts: {} });
     const e = await engineFor(root, agents());

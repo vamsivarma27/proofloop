@@ -27,7 +27,7 @@ export function classifyFailure(input: { category?: string | undefined; output?:
   if (c === 'command-not-detected' || c === 'executable-missing' || c === 'builtin-missing' || c === 'no-base' || c === 'not-reproduced' || c === 'no-reproduction-evidence' || c === 'no-baseline' || c === 'no-evidence' || c === 'dirty-tree' || c === 'commit-mismatch') return 'environment';
   if (c === 'policy-denied') return 'permission';
   if (c === 'timeout') return 'timeout-rate-limit';
-  if (c === 'test-weakened' || c === 'contract-drift' || c === 'regression-test-did-not-fail-first') return 'code-defect';
+  if (c === 'test-weakened' || c === 'contract-drift' || c === 'assertion-failed' || c === 'untraceable-criteria' || c === 'target-not-met' || c === 'no-improvement' || c === 'perf-regression' || c === 'regression-test-did-not-fail-first') return 'code-defect';
   const sameCommit = (input.history ?? []).filter((h) => h.commitSha === input.commitSha);
   if (sameCommit.some((h) => h.state === 'PASS') && sameCommit.some((h) => h.state === 'FAIL')) return 'flaky-test';
   const text = input.output ?? '';

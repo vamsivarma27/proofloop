@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { hashDir } from '../browser/playwright';
 import { sha256 } from '../shared/hash';
 import { gateReport } from '../gates/runner';
 import type { Plan } from '../plan/schema';
@@ -25,7 +26,7 @@ export function verifyEvidenceIntegrity(store: Store, runId: string): IntegrityP
       if (e.commit_sha !== run.headSha) problems.push({ evidenceId: id, problem: `evidence is for ${String(e.commit_sha).slice(0, 8)}, not the candidate ${run.headSha?.slice(0, 8)}` });
       const uri = String(e.uri);
       if (!existsSync(uri)) problems.push({ evidenceId: id, problem: `artifact file missing: ${uri}` });
-      else if (sha256(readFileSync(uri)) !== e.checksum) problems.push({ evidenceId: id, problem: `checksum mismatch for ${uri}` });
+      else if ((statSync(uri).isDirectory() ? hashDir(uri) : sha256(readFileSync(uri))) !== e.checksum) problems.push({ evidenceId: id, problem: `checksum mismatch for ${uri}` });
     }
   }
   return problems;

@@ -13,6 +13,8 @@ import { nodeExec } from '../shared/exec';
 import { FileLogger } from '../shared/log';
 import { type DriveOutcome } from '../engine/engine';
 import { ENGINE_VERSION } from '../version';
+import { runComposerBench } from '../evals/composer-bench';
+import { renderEvalMarkdown, runEvals } from '../evals/runner';
 import { addArtifact } from '../gates/artifacts';
 import { fromK6Summary, sampleCount } from '../perf/report';
 import { recordMeasurement } from '../perf/record';
@@ -49,6 +51,7 @@ Blueprint:      blueprint next-question|answer|defaults|submit|show <id>
 Lifecycle:      status [id] · approve <id> --plan-hash H [--scope S] · reject <id> --comment C · run <id> · resume <id> [--retry] · cancel <id> · pause <id>
 Evidence:       verify · report <id> [--out file] · readiness <id> · plan show <id>
 Artifacts:      artifact add|list <id> [name --file f] · perf record|import-k6 <id> --file f
+Evaluation:     eval [task-id-substring...] · eval composer  (scripted agent; writes evals/reports)
 Setup:          setup [--yes] [--github owner/repo] · protocols · protocol validate <file...>
 Options:        --root <dir> · --json
 `;
@@ -87,6 +90,7 @@ export async function runCli(argv: string[], c: CliEnv): Promise<number> {
   try {
     if (!cmd || cmd === 'help' || cmd === '--help') return (c.io.out(HELP), EXIT.ok);
     if (cmd === 'hook') return hook(c, rest[0]);
+    if (cmd === 'eval') return await evalCmd(c, rest, values as Record<string, string | boolean | undefined>, json, await rootOf(c, values.root as string | undefined));
     if (cmd === 'protocols') return protocols(c, json, await rootOf(c, values.root as string | undefined));
     if (cmd === 'protocol' && rest[0] === 'validate') return validate(c, rest.slice(1));
     const root = await rootOf(c, values.root as string | undefined);
@@ -312,6 +316,23 @@ function perfCmd(c: CliEnv, e: Eng, rest: string[], v: Record<string, string | b
   const r = recordMeasurement(e.d.store, id, input, join(root, '.proofloop', 'artifacts'));
   show(c, json, r.measurement, `recorded ${r.measurement.phase} (${r.measurement.kind}, n=${sampleCount(r.measurement)}) at ${r.measurement.commit.slice(0, 8)}\n`);
   return EXIT.ok;
+}
+
+async function evalCmd(c: CliEnv, rest: string[], v: Record<string, string | boolean | undefined>, json: boolean, root: string): Promise<number> {
+  const out = resolve(c.cwd, String(v.out ?? join(root, 'evals', 'reports')));
+  mkdirSync(out, { recursive: true });
+  if (rest[0] === 'composer') {
+    const rep = await runComposerBench(5, 60);
+    writeFileSync(join(out, 'composer-bench.json'), `${JSON.stringify(rep, null, 2)}\n`);
+    show(c, json, rep, `sequential: ${rep.sequential.roundTrips} round trips, ${rep.sequential.contextBytes} context bytes\ncomposed:   ${rep.composed ? `${rep.composed.roundTrips} round trip, ${rep.composed.contextBytes} context bytes` : 'unavailable on this Node'}\n${rep.note}\nwritten to ${join(out, 'composer-bench.json')}\n`);
+    return EXIT.ok;
+  }
+  const only = rest.length ? rest : undefined;
+  const rep = await runEvals({ only, log: (l) => c.io.err(`${l}\n`) });
+  writeFileSync(join(out, 'latest.json'), `${JSON.stringify(rep, null, 2)}\n`);
+  writeFileSync(join(out, 'latest.md'), renderEvalMarkdown(rep));
+  show(c, json, rep.summary, `${renderEvalMarkdown(rep)}\nwritten to ${out}\n`);
+  return rep.proofloop.every((r) => r.correct) && rep.summary.proofloop.safetyIncidents === 0 ? EXIT.ok : EXIT.error;
 }
 
 function protocols(c: CliEnv, json: boolean, root: string): number {

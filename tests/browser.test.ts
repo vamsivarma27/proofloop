@@ -105,6 +105,19 @@ describe('browser gate', () => {
     expect(ev.checksum).toBe(hashDir(join(s.root, 'test-results')));
   });
 
+  it('directory evidence is snapshotted, survives the next test run, and tampering with the snapshot is detected', async () => {
+    const s = await setup(false, `require('fs').mkdirSync('test-results',{recursive:true});require('fs').writeFileSync('test-results/trace.zip','TRACE');process.exit(0)`);
+    s.store.setGatePlan(s.run.id, [{ gateId: 'browser', kind: 'browser', required: true, command: 'node e2e.js' }]);
+    await runGate(s.withApp({ artifactDirs: ['test-results'] }), s.entry);
+    const { verifyEvidenceIntegrity } = await import('../src/engine/report');
+    expect(verifyEvidenceIntegrity(s.store, s.run.id)).toEqual([]);
+    writeFileSync(join(s.root, 'test-results', 'trace.zip'), 'NEXT RUN REWROTE THE DIRECTORY'); // evidence is a snapshot
+    expect(verifyEvidenceIntegrity(s.store, s.run.id)).toEqual([]);
+    const snap = String(s.store.evidenceFor(s.run.id).find((e) => e.kind === 'browser-artifacts')!.uri);
+    writeFileSync(join(snap, 'trace.zip'), 'TAMPERED');
+    expect(verifyEvidenceIntegrity(s.store, s.run.id).map((p) => p.problem).join()).toContain('checksum mismatch');
+  });
+
   it('the app is stopped after the gate even when the test fails', async () => {
     const s = await setup(true);
     await runGate(s.withApp(), s.entry);

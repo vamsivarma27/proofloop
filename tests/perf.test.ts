@@ -49,6 +49,11 @@ describe('performance verdicts (v0.6 AC1, AC2, AC5)', () => {
     expect(evaluatePerformance(m(tput(300)), m({ phase: 'after', ...tput(700) })).kind).toBe('TARGET_MET');
   });
 
+  it('does not credit an optimization with meeting a target the baseline already met', () => {
+    const easy = m({ target: { metric: 'p95', comparator: '<=', value: 500, unit: 'ms' } });
+    expect(evaluatePerformance(easy, { ...easy, phase: 'after', samples: samples(100) })).toMatchObject({ kind: 'INVALID', reason: expect.stringContaining('already meets the target') });
+  });
+
   it('refuses scalability claims that are not backed by a met target', () => {
     const text = 'The service now scales to 10,000 users and handles 5000 rps.';
     expect(unsupportedScaleClaims(text, null).length).toBe(2);

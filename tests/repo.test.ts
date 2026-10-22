@@ -133,5 +133,13 @@ describe('test integrity analysis', () => {
     expect(analyzeTestDiff('diff --git a/tests/x.ts b/tests/x.ts\ndeleted file mode 100644\n')[0]?.kind).toBe('test-deleted');
     expect(analyzeTestDiff(diff('src/a.ts', '-expect(a)\n+nothing'))).toEqual([]);
     expect(analyzeTestDiff(diff('src/a.test.ts', '-expect(a).toBe(1)\n+expect(a).toBe(2)'))).toEqual([]);
+    expect(analyzeTestDiff(diff('src/a.test.ts', '-expect(a).toBe(1)\n+expect(a).toEqual(1)'))).toEqual([]);
+  });
+
+  it('judges plan-declared test files with unconventional names, counting assertion tokens not lines', () => {
+    const weakened = diff('check.js', "-process.exit(f(1)===1&&f(2)===2?0:1)\n+process.exit(f(1)===1?0:1)");
+    expect(analyzeTestDiff(weakened)).toEqual([]); // unknown name: not treated as a test by convention
+    expect(analyzeTestDiff(weakened, ['check.js'])[0]?.kind).toBe('assertions-removed');
+    expect(analyzeTestDiff(diff('check.js', '-process.exit(f(1)===1?0:1)\n+process.exit(f(1)===1&&f(2)===2?0:1)'), ['check.js'])).toEqual([]);
   });
 });

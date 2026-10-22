@@ -224,6 +224,28 @@ describe('bug protocol', () => {
   });
 });
 
+describe('cancellation (v0.3 AC4)', () => {
+  it('stops new tasks, keeps the worktree and branch usable, and never completes', async () => {
+    const plan = twoTaskPlan(['task-a']);
+    let runId = '';
+    const started: string[] = [];
+    const e = await engineFor(await twoProject(), agents({ plan, implement: async (req) => { started.push(req.prompt.includes('task-a') ? 'a' : 'b'); writeFor(req); if (req.prompt.includes('task-a')) await e.cancel(runId); } }));
+    const run = await e.start({ protocolId: 'feature', intent: 'Add a and b files' });
+    runId = run.id;
+    await e.drive(runId);
+    approvePlan(e.d.store, runId, { planHash: e.d.store.getRun(runId).currentPlanHash!, by: 'human:t' });
+    const out = await e.drive(runId);
+    expect(out.state).toBe('CANCELLED');
+    expect(started).toEqual(['a']);
+    const r = e.d.store.getRun(runId);
+    const git = new Git();
+    expect((await git.listWorktrees(e.d.root)).some((w) => w.path === r.worktreePath)).toBe(true);
+    expect(await git.run(r.worktreePath!, ['show', 'HEAD:a/x.txt'])).toBe('1');
+    expect(await git.isClean(r.worktreePath!)).toBe(true);
+    expect((await e.resume(runId)).state).toBe('CANCELLED');
+  });
+});
+
 describe('GitHub delivery and sync', () => {
   function fakePort(over: Partial<GithubPort> = {}) {
     const log: string[] = [];

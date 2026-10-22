@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { cpSync, mkdirSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import type { Git } from '../git/git';
 import { type CommandPolicy, evaluateCommand } from '../policy/command';
 import { type Clock } from '../shared/clock';
@@ -156,8 +156,12 @@ function finish(ctx: GateRunCtx, entry: GatePlanEntry, attempts: Attempt[], star
   const worst = judged.reduce((w, x) => (RANK[x.j.state] > RANK[w.j.state] ? x : w));
   const output = judged.map(({ a, j }) => `${a.persona ? `=== persona ${a.persona}: ${j.state} ===\n` : ''}${a.output}`).join('\n');
   const extra = (ctx.artifactDirs ?? []).flatMap((d) => {
-    const checksum = hashDir(join(ctx.cwd, d));
-    return checksum ? [{ kind: 'browser-artifacts', uri: join(ctx.cwd, d), checksum }] : [];
+    const src = join(ctx.cwd, d);
+    if (!hashDir(src)) return [];
+    // snapshot: the next test run rewrites these directories, which would silently invalidate in-place evidence
+    const snap = join(ctx.artifactDir, ctx.runId, `${entry.gateId}-${ctx.commitSha.slice(0, 8)}-${ctx.store.gateHistory(ctx.runId, entry.gateId).length + 1}-${basename(d)}`);
+    cpSync(src, snap, { recursive: true });
+    return [{ kind: 'browser-artifacts', uri: snap, checksum: hashDir(snap)! }];
   });
   return record(ctx, entry, {
     state: worst.j.state, exitCode: worst.a.run.code, summary: judged.length > 1 ? judged.map(({ j }) => j.summary).join('; ') : worst.j.summary, category: worst.j.category, output, started,

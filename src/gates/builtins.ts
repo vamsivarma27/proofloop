@@ -16,11 +16,21 @@ async function diffFromBase(ctx: GateRunCtx): Promise<{ diff: string; files: str
   return { diff: await ctx.git.diff(ctx.cwd, base), files: await ctx.git.changedFiles(ctx.cwd, base) };
 }
 
+const FILE_LIKE = /^[\w@./-]+\.[A-Za-z0-9]+(?::\d+)?$/;
+
+/** Files the approved plan, regression test or gate commands name as tests. */
+function declaredTestFiles(ctx: GateRunCtx): string[] {
+  const plan = ctx.store.getPlanBody(ctx.runId) as { acceptanceCriteria?: Array<{ tests: string[] }>; regressionTest?: { file: string } } | undefined;
+  const fromPlan = [...(plan?.acceptanceCriteria?.flatMap((a) => a.tests) ?? []), ...(plan?.regressionTest ? [plan.regressionTest.file] : [])];
+  const fromGates = ctx.store.getGatePlan(ctx.runId).flatMap((g) => (g.command && !g.command.startsWith('builtin:') ? g.command.split(/\s+/) : []));
+  return [...new Set([...fromPlan, ...fromGates].filter((x) => FILE_LIKE.test(x)).map((x) => x.replace(/:\d+$/, '')))];
+}
+
 /** Fails when tests were deleted, skipped or lost assertions unless a human approved a `test-change`. */
 export async function testIntegrity(ctx: GateRunCtx): Promise<BuiltinOutcome> {
   const d = await diffFromBase(ctx);
   if (!d) return blocked('no base commit recorded; cannot compare tests', 'no-base');
-  const findings = analyzeTestDiff(d.diff);
+  const findings = analyzeTestDiff(d.diff, declaredTestFiles(ctx));
   if (findings.length === 0) return pass('no weakened, skipped or deleted tests in the diff');
   if (ctx.store.hasGatedApproval(ctx.runId, TEST_CHANGE_SCOPE)) return pass(`${findings.length} test change(s) covered by an approved test-change`);
   return fail(`unapproved test weakening: ${findings.map((f) => `${f.file} (${f.kind}: ${f.detail})`).join('; ')}`, 'test-weakened');

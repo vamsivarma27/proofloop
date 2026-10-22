@@ -67,6 +67,8 @@ export function evaluatePerformance(baseline: Measurement | undefined, after: Me
   const b = metricOf(baseline);
   const a = metricOf(after);
   if (b === null || a === null || b === 0) return { kind: 'INVALID', reason: `metric ${baseline.target.metric} is not available in the recorded data` };
+  const baselineMet = after.target.comparator === '<=' ? b <= after.target.value : b >= after.target.value;
+  if (baselineMet) return { kind: 'INVALID', reason: `the baseline (${b.toFixed(1)}) already meets the target (${after.target.comparator} ${after.target.value}); an optimization cannot be credited with meeting it. Choose a stricter target or a different problem` };
   const improvement = better(after.target.comparator, b, a);
   const met = after.target.comparator === '<=' ? a <= after.target.value : a >= after.target.value;
   const base = { baseline: b, after: a, improvement };
