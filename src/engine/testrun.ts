@@ -41,8 +41,8 @@ export function renderTestMarkdown(r: TestReport): string {
   return L.join('\n');
 }
 
-async function runOn(d: EngineDeps, cwd: string, head: string, intent: string, only: string[] | undefined): Promise<{ runId: string; plan: ReturnType<typeof buildGatePlan> }> {
-  const protocol = d.registry.get('test');
+export async function runOn(d: EngineDeps, cwd: string, head: string, intent: string, only: string[] | undefined, protocolId = 'test'): Promise<{ runId: string; plan: ReturnType<typeof buildGatePlan> }> {
+  const protocol = d.registry.get(protocolId);
   const projectId = d.store.ensureProject({ name: basename(d.root), repository: await d.git.remoteRepo(d.root), defaultBranch: await d.git.defaultBranch(d.root), detectedStack: d.detected });
   const run = d.store.createRun({ projectId, protocolId: protocol.id, protocolVersion: protocol.version, intent, risk: 'high', repairBudget: 0 });
   d.store.setFields(run.id, { headSha: head, baseCommit: head, worktreePath: cwd });
@@ -53,7 +53,7 @@ async function runOn(d: EngineDeps, cwd: string, head: string, intent: string, o
   return { runId: run.id, plan };
 }
 
-const stateOf = (d: EngineDeps, runId: string, gateId: string): { state: string; category: string | null } => {
+export const stateOf = (d: EngineDeps, runId: string, gateId: string): { state: string; category: string | null } => {
   const last = d.store.gateHistory(runId, gateId).at(-1);
   return { state: last?.state ?? 'MISSING', category: last?.failureCategory ?? null };
 };

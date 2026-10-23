@@ -3,6 +3,7 @@ import { RISK_LEVELS, type RiskLevel, riskRank } from '../protocol/schema';
 import { classifyRisk } from '../policy/risk';
 import { scopesOverlap } from '../policy/paths';
 import { transitiveDeps, topoSort } from './dag';
+import { DESIGN_AREAS } from '../audit/checklist';
 
 const id = (prefix: string) => z.string().regex(new RegExp(`^${prefix}-?[A-Za-z0-9_.-]+$`), `must start with "${prefix}"`);
 
@@ -43,6 +44,13 @@ export const planSchema = z.strictObject({
       }),
     )
     .min(1),
+  /** System-design intent: expected scale, latency targets, and the decisions that serve them. Optional, but a stated scale needs a load or performance check. */
+  design: z
+    .strictObject({
+      scale: z.strictObject({ expectedUsers: z.number().int().positive(), peakRps: z.number().positive().optional(), targets: z.strictObject({ p95Ms: z.number().positive(), p99Ms: z.number().positive(), errorRate: z.number().min(0).max(1) }) }),
+      decisions: z.array(z.strictObject({ area: z.enum(DESIGN_AREAS), decision: z.string().min(5), tradeoff: z.string().optional() })).default([]),
+    })
+    .optional(),
   /** Commands the human approves with the plan; each still passes command policy at run time. */
   gateCommands: z.record(z.string(), z.string()).default({}),
   reproduction: z.strictObject({ steps: z.string(), observed: z.string(), expected: z.string(), reproducible: z.enum(['yes', 'no', 'unknown']) }).optional(),
@@ -90,6 +98,10 @@ export function validatePlan(input: unknown, opts: { protocolId?: string } = {})
   if (opts.protocolId === 'bug' && !plan.reproduction) errors.push('bug plans need a reproduction record (reproducible: yes|no|unknown)');
   if (opts.protocolId === 'bug' && !(plan.rootCause?.confirmed || plan.rootCause?.uncertainty)) errors.push('bug plans need a rootCause with a confirmed cause or an explicit uncertainty');
 
+  const MEASURING = /load|perf|bench|latency|stress/i;
+  if (plan.design && !plan.testPlan.some((t) => MEASURING.test(t.kind) || MEASURING.test(t.gateId ?? ''))) errors.push('design.scale states targets but the test plan has no load/performance check that could prove them');
+  if (!plan.design && riskRank(plan.risk.level) >= riskRank('medium') && opts.protocolId !== 'bug') warnings.push('no design section: expected scale, latency targets and design decisions were not considered');
+
   if (errors.length === 0) {
     for (let i = 0; i < plan.tasks.length; i++)
       for (let j = i + 1; j < plan.tasks.length; j++) {
@@ -116,6 +128,10 @@ export function renderPlanMarkdown(plan: Plan, hash: string, version: number): s
   L.push(...plan.acceptanceCriteria.map((a) => `- ${a.id}: ${a.text}\n  - verified by: ${a.tests.length ? a.tests.map((t) => `\`${t}\``).join(', ') : `manual (${a.manual?.reason})`}`), '', '## Test plan');
   L.push(...plan.testPlan.map((t) => `- ${t.id} [${t.kind}] ${t.description}${t.gateId ? ` → gate \`${t.gateId}\`` : ''}`), '', '## Tasks');
   L.push(...plan.tasks.map((t) => `- **${t.id}** ${t.title} (risk ${t.risk}) deps: ${t.dependencies.join(', ') || 'none'}; scope: ${t.fileScopes.join(', ')}; covers ${t.acceptanceCriteria.join(', ')}; done when: ${t.doneWhen}`));
+  if (plan.design) {
+    const { scale: sc, decisions } = plan.design;
+    L.push('', '## Design and scale', `- Expected: ${sc.expectedUsers} users${sc.peakRps ? `, ~${sc.peakRps} rps peak` : ''}; targets p95 <= ${sc.targets.p95Ms} ms, p99 <= ${sc.targets.p99Ms} ms, errors <= ${sc.targets.errorRate * 100}%`, ...decisions.map((x) => `- ${x.area}: ${x.decision}${x.tradeoff ? ` (trade-off: ${x.tradeoff})` : ''}`));
+  }
   if (Object.keys(plan.gateCommands).length) L.push('', '## Commands approved with this plan', ...Object.entries(plan.gateCommands).map(([g, c]) => `- ${g}: \`${c}\``));
   L.push('', '## What happens next', '1. You review this plan. Approval binds to the hash above; any change to the plan needs a new approval.', '2. Tasks run in an isolated worktree, in dependency order.', '3. Every acceptance criterion is checked by the gates on the final commit. Anything not proven is reported as such.');
   return `${L.join('\n')}\n`;

@@ -17,6 +17,8 @@ import { runComposerBench } from '../evals/composer-bench';
 import { renderEvalMarkdown, runEvals } from '../evals/runner';
 import { SUITES, runSuites } from '../evals/suites';
 import { testCurrent } from '../engine/testrun';
+import { runAudit } from '../audit/audit';
+import { renderChecklist } from '../audit/checklist';
 import { GhAdapter } from '../github/adapter';
 import { renderRealMarkdown, runRealEvals } from '../evals/real';
 import { addArtifact } from '../gates/artifacts';
@@ -61,6 +63,7 @@ Evidence:       verify · report <id> [--out file] · readiness <id> · plan sho
 Memory:         ledger export <id> [--format json|markdown] [--out file] · memory <id> · incident list|show <id>|confirm <id> --text T --yes
 Artifacts:      artifact add|list <id> [name --file f] · perf record|import-k6 <id> --file f
 Evaluation:     eval [task-id-substring...] · eval composer · eval --runtime claude [--max-usd 1] [--total-usd 10] [--model m]  (real model; spends money)
+Audit:          audit [--users 2000] [--p95 300] [--p99 800] [--error-rate 0.01] [--path /x ...] [--requests 300] · audit --checklist   (scale, latency percentiles, system-design review)
 Testing:        test [gate...] [--no-baseline] [--file-bugs]  (full project test: all checks, browser personas, regression vs base)
                 selftest [suite...|all] · selftest --list   (ProofLoop's own end-to-end suites)
 Setup:          setup [--yes] [--github owner/repo] · protocols · protocol validate <file...>
@@ -94,7 +97,7 @@ export async function runCli(argv: string[], c: CliEnv): Promise<number> {
     args: argv,
     allowPositionals: true,
     strict: false,
-    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' }, runtime: { type: 'string' }, 'max-usd': { type: 'string' }, 'reuse-baseline': { type: 'string' }, 'total-usd': { type: 'string' }, model: { type: 'string' }, meta: { type: 'string' }, format: { type: 'string' }, topic: { type: 'string' }, text: { type: 'string' } },
+    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' }, runtime: { type: 'string' }, 'max-usd': { type: 'string' }, 'reuse-baseline': { type: 'string' }, 'total-usd': { type: 'string' }, model: { type: 'string' }, meta: { type: 'string' }, format: { type: 'string' }, topic: { type: 'string' }, text: { type: 'string' }, users: { type: 'string' }, p95: { type: 'string' }, p99: { type: 'string' }, 'error-rate': { type: 'string' }, requests: { type: 'string' }, path: { type: 'string', multiple: true }, 'file-bugs': { type: 'boolean' }, 'no-baseline': { type: 'boolean' }, list: { type: 'boolean' }, checklist: { type: 'boolean' } },
   });
   const [cmd, ...rest] = positionals;
   const json = values.json === true;
@@ -118,6 +121,7 @@ export async function runCli(argv: string[], c: CliEnv): Promise<number> {
 async function withEngine(c: CliEnv, root: string, cmd: string, rest: string[], v: Record<string, string | boolean | undefined>, json: boolean): Promise<number> {
   const e = await engineOf(c, root);
   if (cmd === 'test') return await projectTest(c, e, rest, v, json);
+  if (cmd === 'audit') return await auditCmd(c, e, v, json);
   const protocolId = PROTOCOL_COMMANDS[cmd];
   if (protocolId) {
     const intent = rest.join(' ').trim();
@@ -367,10 +371,23 @@ async function projectTest(c: CliEnv, e: Awaited<ReturnType<typeof engineOf>>, o
   return rep.passed ? EXIT.ok : EXIT.blocked;
 }
 
+async function auditCmd(c: CliEnv, e: Awaited<ReturnType<typeof engineOf>>, v: Record<string, string | boolean | string[] | undefined>, json: boolean): Promise<number> {
+  if (v.checklist === true) return (c.io.out(`${renderChecklist()}\n`), EXIT.ok);
+  const num = (k: string): number | undefined => (v[k] === undefined ? undefined : Number(v[k]));
+  const users = num('users') ?? 2000;
+  const bad = [['users', users], ['p95', num('p95')], ['p99', num('p99')], ['error-rate', num('error-rate')], ['requests', num('requests')]].find(([, x]) => x !== undefined && (!Number.isFinite(x as number) || (x as number) <= 0));
+  if (bad) return (c.io.err(`--${bad[0]} must be a positive number\n`), EXIT.usage);
+  const t = { ...(num('p95') ? { p95Ms: num('p95')! } : {}), ...(num('p99') ? { p99Ms: num('p99')! } : {}), ...(num('error-rate') ? { errorRate: num('error-rate')! } : {}) };
+  const rep = await runAudit(e.d, { users, targets: t, paths: (v.path as string[] | undefined) ?? [], ...(num('requests') ? { requests: num('requests')! } : {}) });
+  const probeLines = rep.probe.results.map((r) => `  ${r.path.padEnd(24)} p50 ${r.p50} ms  p95 ${r.p95} ms  p99 ${r.p99} ms  errors ${r.errors}/${r.n}`).join('\n');
+  show(c, json, rep, `Audit for ${users} users: ${rep.status}\n${rep.probe.measured ? probeLines : `  not measured: ${rep.probe.reason}`}\n${rep.probe.violations.map((x) => `  violation: ${x}\n`).join('')}  load test: ${rep.load.command ? `${rep.load.command} -> ${rep.load.state}` : 'none'}\n  static findings: ${rep.findings.length} (${rep.findings.filter((f) => f.severity === 'high').length} high)\n${rep.findings.filter((f) => f.severity === 'high').slice(0, 10).map((f) => `    ${f.rule} ${f.file}:${f.line}\n`).join('')}\nreport: ${join(rep.dir, 'report.md')}\nNow review the system-design checklist against the code (proofloop audit --checklist).\n`);
+  return rep.status === 'measured-ok' ? EXIT.ok : EXIT.blocked;
+}
+
 async function testCmd(c: CliEnv, rest: string[], v: Record<string, string | boolean | undefined>, json: boolean, root: string): Promise<number> {
   if (v.list === true) return (show(c, json, SUITES, `${Object.entries(SUITES).map(([k, d]) => `${k.padEnd(12)} ${d}`).join('\n')}\nall          every suite above\n`), EXIT.ok);
   const suites = rest.filter((x) => x !== 'all');
-  const slug = typeof v['file-bugs'] === 'string' ? v['file-bugs'] : undefined;
+  const slug = v['file-bugs'] === true ? (v.github as string | undefined) : undefined;
   const rep = await runSuites({ root, suites, log: (l) => c.io.err(`${l}\n`), ...(slug ? { github: new GhAdapter(slug) } : {}) });
   show(c, json, rep, `${rep.outcomes.map((o) => `${o.correct ? 'pass' : 'FAIL'}  ${o.category.padEnd(12)} ${o.id.padEnd(42)} ${o.finalState} (${o.elapsedMs} ms)`).join('\n')}\n${rep.passed} passed, ${rep.failed} failed. ${rep.bugs.length} bug(s).\n${rep.bugs.map((b) => `  - ${b.title}`).join('\n')}${rep.bugs.length ? '\n' : ''}report: ${join(rep.dir, 'report.md')}\nlog:    ${join(rep.dir, 'log.jsonl')}\n`);
   return rep.failed ? EXIT.error : EXIT.ok;
