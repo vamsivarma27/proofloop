@@ -1,0 +1,23 @@
+schemaVersion: 1
+id: test
+version: 1.0.0
+title: Test protocol
+description: "Full project test on the current commit: static checks, unit and regression suite, integration, browser journeys with personas, security scan, migration, compared with the base branch."
+engine: ">=1.0.0"
+mode: existing-repo
+defaultRisk: medium
+retry: { maxRepairAttempts: 0, stopOnIdenticalFailure: true }
+personas: [ordinary-user, impatient-user, unauthorized-user, accessibility]
+gates:
+  - { id: format, kind: format, required: false }
+  - { id: lint, kind: lint, required: true }
+  - { id: typecheck, kind: typecheck, required: true }
+  - { id: unit, kind: unit, required: true }
+  - { id: build, kind: build, required: true }
+  - { id: integration, kind: integration, required: false }
+  - { id: browser, kind: browser, required: true }
+  - { id: security-scan, kind: security-scan, required: false }
+  - { id: migration, kind: migration, required: false }
+phases:
+  - { id: verification, title: "Run every applicable check on the current commit and on the base branch", gates: [format, lint, typecheck, unit, build, integration, browser, security-scan, migration] }
+  - { id: delivery, title: "Report results, regressions and bugs" }

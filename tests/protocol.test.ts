@@ -28,7 +28,7 @@ describe('protocol schema', () => {
     const reg = loadRegistry();
     expect(reg.diagnostics).toEqual([]);
     expect(reg.list().map((p) => p.id)).toEqual(
-      ['bug', 'feature', 'idea-to-product', 'performance', 'refactor', 'security', 'troubleshooting', 'verify'],
+      ['bug', 'feature', 'idea-to-product', 'performance', 'refactor', 'security', 'test', 'troubleshooting', 'verify'],
     );
   });
 

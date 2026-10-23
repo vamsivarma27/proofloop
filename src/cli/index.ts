@@ -16,6 +16,7 @@ import { ENGINE_VERSION } from '../version';
 import { runComposerBench } from '../evals/composer-bench';
 import { renderEvalMarkdown, runEvals } from '../evals/runner';
 import { SUITES, runSuites } from '../evals/suites';
+import { testCurrent } from '../engine/testrun';
 import { GhAdapter } from '../github/adapter';
 import { renderRealMarkdown, runRealEvals } from '../evals/real';
 import { addArtifact } from '../gates/artifacts';
@@ -60,7 +61,8 @@ Evidence:       verify · report <id> [--out file] · readiness <id> · plan sho
 Memory:         ledger export <id> [--format json|markdown] [--out file] · memory <id> · incident list|show <id>|confirm <id> --text T --yes
 Artifacts:      artifact add|list <id> [name --file f] · perf record|import-k6 <id> --file f
 Evaluation:     eval [task-id-substring...] · eval composer · eval --runtime claude [--max-usd 1] [--total-usd 10] [--model m]  (real model; spends money)
-Testing:        test [suite...|all] · test --list · test --file-bugs owner/repo   (end-to-end suites: logs, report, bug list)
+Testing:        test [gate...] [--no-baseline] [--file-bugs]  (full project test: all checks, browser personas, regression vs base)
+                selftest [suite...|all] · selftest --list   (ProofLoop's own end-to-end suites)
 Setup:          setup [--yes] [--github owner/repo] · protocols · protocol validate <file...>
 Options:        --root <dir> · --json
 `;
@@ -100,7 +102,7 @@ export async function runCli(argv: string[], c: CliEnv): Promise<number> {
     if (!cmd || cmd === 'help' || cmd === '--help') return (c.io.out(HELP), EXIT.ok);
     if (cmd === 'hook') return hook(c, rest[0]);
     if (cmd === 'eval') return await evalCmd(c, rest, values as Record<string, string | boolean | undefined>, json, await rootOf(c, values.root as string | undefined));
-    if (cmd === 'test') return await testCmd(c, rest, values as Record<string, string | boolean | undefined>, json, await rootOf(c, values.root as string | undefined));
+    if (cmd === 'selftest') return await testCmd(c, rest, values as Record<string, string | boolean | undefined>, json, await rootOf(c, values.root as string | undefined));
     if (cmd === 'protocols') return protocols(c, json, await rootOf(c, values.root as string | undefined));
     if (cmd === 'protocol' && rest[0] === 'validate') return validate(c, rest.slice(1));
     const root = await rootOf(c, values.root as string | undefined);
@@ -115,6 +117,7 @@ export async function runCli(argv: string[], c: CliEnv): Promise<number> {
 
 async function withEngine(c: CliEnv, root: string, cmd: string, rest: string[], v: Record<string, string | boolean | undefined>, json: boolean): Promise<number> {
   const e = await engineOf(c, root);
+  if (cmd === 'test') return await projectTest(c, e, rest, v, json);
   const protocolId = PROTOCOL_COMMANDS[cmd];
   if (protocolId) {
     const intent = rest.join(' ').trim();
@@ -355,6 +358,13 @@ async function evalCmd(c: CliEnv, rest: string[], v: Record<string, string | boo
   writeFileSync(join(out, 'latest.md'), renderEvalMarkdown(rep));
   show(c, json, rep.summary, `${renderEvalMarkdown(rep)}\nwritten to ${out}\n`);
   return rep.proofloop.every((r) => r.correct) && rep.summary.proofloop.safetyIncidents === 0 ? EXIT.ok : EXIT.error;
+}
+
+async function projectTest(c: CliEnv, e: Awaited<ReturnType<typeof engineOf>>, only: string[], v: Record<string, string | boolean | undefined>, json: boolean): Promise<number> {
+  const rep = await testCurrent(e.d, { cwd: e.d.root, only, baseline: v['no-baseline'] !== true, github: v['file-bugs'] === true ? e.d.port : null });
+  const rows = rep.rows.map((r) => `${r.verdict === 'pass' || r.verdict === 'fixed' ? 'ok  ' : r.verdict === 'gap' ? 'gap ' : 'FAIL'} ${r.gateId.padEnd(14)} ${r.state.padEnd(8)} base:${(r.baseline ?? '-').padEnd(8)} ${r.verdict}`).join('\n');
+  show(c, json, rep, `${rows}\n${rep.rows.filter((r) => r.excerpt).map((r) => `\n--- ${r.gateId} failure (tail) ---\n${r.excerpt}\n`).join('')}\n${rep.passed ? 'PASSED' : 'NOT PASSED'}: ${rep.bugs.length} bug(s), ${rep.gaps.length} coverage gap(s)\n${rep.gaps.map((g) => `  gap: ${g}\n`).join('')}report: ${join(rep.dir, 'report.md')}\nlogs:   ${rep.logs}\n`);
+  return rep.passed ? EXIT.ok : EXIT.blocked;
 }
 
 async function testCmd(c: CliEnv, rest: string[], v: Record<string, string | boolean | undefined>, json: boolean, root: string): Promise<number> {
