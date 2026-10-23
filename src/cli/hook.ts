@@ -12,8 +12,22 @@ export interface HookDecision {
   reason: string;
 }
 
-const MUTATING = /\b(proofloop|main\.js|cli\.js)\b[^\n]*\b(approve|reject|cancel|pause|resume|run|gates|artifact|perf|blueprint|waive)\b/;
-const HUMAN_ONLY = /\b(proofloop|main\.js|cli\.js)\b[^\n]*\b(approve|reject)\b/;
+const MUTATING = new Set(['approve', 'reject', 'cancel', 'pause', 'resume', 'run', 'gates', 'artifact', 'perf', 'blueprint', 'waive']);
+const HUMAN_ONLY = new Set(['approve', 'reject']);
+const WRAPPERS = new Set(['env', 'sudo', 'node', 'npx', 'bash', 'sh', 'zsh', 'command', 'exec', 'time', 'nohup']);
+const ASSIGNMENT = /^\w+=/;
+
+/** The ProofLoop subcommand a shell segment actually invokes, or null. Words inside a grep pattern or a path do not count. */
+function proofloopSubcommand(segment: string): string | null {
+  const tokens = segment.split(/\s+/).map((t) => t.replace(/^["'(]+|["')]+$/g, '')).filter(Boolean);
+  const at = tokens.findIndex((t) => /(^|[\\/])(proofloop|main\.js|cli\.js)$/.test(t));
+  if (at < 0) return null;
+  const before = tokens.slice(0, at);
+  if (!before.every((t) => WRAPPERS.has(t) || ASSIGNMENT.test(t) || t.startsWith('-'))) return null;
+  return tokens.slice(at + 1).find((t) => !t.startsWith('-')) ?? null;
+}
+
+const subcommands = (command: string): string[] => [command, ...commandSegments(command)].map(proofloopSubcommand).filter((x): x is string => x !== null);
 const FILE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 
 /**
@@ -39,9 +53,10 @@ const STATE_ACCESS = /state\.db|ledger\.key|\.proofloop[\\/]+(state|artifacts)|c
 function bashDecision(command: string, agent: boolean): HookDecision {
   if (STATE_ACCESS.test(command))
     return agent ? { decision: 'deny', reason: 'ProofLoop state, ledger key and CLI internals are not accessible to agent sessions' } : { decision: 'ask', reason: 'This command touches ProofLoop state or the ledger key; confirm it is intended' };
-  if (MUTATING.test(command)) {
+  const subs = subcommands(command);
+  if (subs.some((x) => MUTATING.has(x))) {
     if (agent) return { decision: 'deny', reason: 'ProofLoop state, approvals and gates can only be changed by the engine or a human, never by an agent session' };
-    if (HUMAN_ONLY.test(command)) return { decision: 'ask', reason: 'Approving or rejecting a ProofLoop plan is a human decision. Confirm you reviewed the plan.' };
+    if (subs.some((x) => HUMAN_ONLY.has(x))) return { decision: 'ask', reason: 'Approving or rejecting a ProofLoop plan is a human decision. Confirm you reviewed the plan.' };
   }
   // compound commands are malformed for the allowlist, but each segment is still judged so `ls; terraform apply` is caught
   for (const seg of [command, ...commandSegments(command)]) {

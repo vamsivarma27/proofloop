@@ -28089,6 +28089,8 @@ function validatePlan(input2, opts = {}) {
 function renderPlanMarkdown(plan, hash2, version2) {
   const L = [];
   L.push(`# Plan v${version2} (\`${hash2.slice(0, 12)}\`)`, "", `**Intent:** ${plan.intent.summary}`, "", `**Outcome:** ${plan.intent.outcome}`, "");
+  const gates = Object.keys(plan.gateCommands).length;
+  L.push("## At a glance", "", "| Risk | Tasks | Acceptance criteria | Files in scope | Commands to approve |", "|---|---|---|---|---|", `| ${plan.risk.level} | ${plan.tasks.length} | ${plan.acceptanceCriteria.length} | ${plan.affectedModules.length} | ${gates} |`, "");
   if (plan.intent.nonGoals.length) L.push("**Non-goals:**", ...plan.intent.nonGoals.map((x) => `- ${x}`), "");
   L.push(`**Risk:** ${plan.risk.level} \u2014 ${plan.risk.rationale}`, "", "## Assumptions");
   L.push(...plan.assumptions.length ? plan.assumptions.map((a) => `- ${a.id} [${a.impact}] ${a.confirmed ? "confirmed" : "**unconfirmed**"}: ${a.text}`) : ["- none"], "", "## Affected modules");
@@ -28098,6 +28100,7 @@ function renderPlanMarkdown(plan, hash2, version2) {
   L.push(...plan.testPlan.map((t) => `- ${t.id} [${t.kind}] ${t.description}${t.gateId ? ` \u2192 gate \`${t.gateId}\`` : ""}`), "", "## Tasks");
   L.push(...plan.tasks.map((t) => `- **${t.id}** ${t.title} (risk ${t.risk}) deps: ${t.dependencies.join(", ") || "none"}; scope: ${t.fileScopes.join(", ")}; covers ${t.acceptanceCriteria.join(", ")}; done when: ${t.doneWhen}`));
   if (Object.keys(plan.gateCommands).length) L.push("", "## Commands approved with this plan", ...Object.entries(plan.gateCommands).map(([g, c]) => `- ${g}: \`${c}\``));
+  L.push("", "## What happens next", "1. You review this plan. Approval binds to the hash above; any change to the plan needs a new approval.", "2. Tasks run in an isolated worktree, in dependency order.", "3. Every acceptance criterion is checked by the gates on the final commit. Anything not proven is reported as such.");
   return `${L.join("\n")}
 `;
 }
@@ -33495,8 +33498,19 @@ Total spend: $${r.totalCostUsd} (cap $${r.perTaskCapUsd} per task per arm).
 
 // src/cli/hook.ts
 init_paths();
-var MUTATING = /\b(proofloop|main\.js|cli\.js)\b[^\n]*\b(approve|reject|cancel|pause|resume|run|gates|artifact|perf|blueprint|waive)\b/;
-var HUMAN_ONLY = /\b(proofloop|main\.js|cli\.js)\b[^\n]*\b(approve|reject)\b/;
+var MUTATING = /* @__PURE__ */ new Set(["approve", "reject", "cancel", "pause", "resume", "run", "gates", "artifact", "perf", "blueprint", "waive"]);
+var HUMAN_ONLY = /* @__PURE__ */ new Set(["approve", "reject"]);
+var WRAPPERS = /* @__PURE__ */ new Set(["env", "sudo", "node", "npx", "bash", "sh", "zsh", "command", "exec", "time", "nohup"]);
+var ASSIGNMENT = /^\w+=/;
+function proofloopSubcommand(segment) {
+  const tokens3 = segment.split(/\s+/).map((t) => t.replace(/^["'(]+|["')]+$/g, "")).filter(Boolean);
+  const at = tokens3.findIndex((t) => /(^|[\\/])(proofloop|main\.js|cli\.js)$/.test(t));
+  if (at < 0) return null;
+  const before = tokens3.slice(0, at);
+  if (!before.every((t) => WRAPPERS.has(t) || ASSIGNMENT.test(t) || t.startsWith("-"))) return null;
+  return tokens3.slice(at + 1).find((t) => !t.startsWith("-")) ?? null;
+}
+var subcommands = (command) => [command, ...commandSegments(command)].map(proofloopSubcommand).filter((x) => x !== null);
 var FILE_TOOLS = /* @__PURE__ */ new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 function evaluateHook(input2, env) {
   const agent = env.PROOFLOOP_AGENT_SESSION === "1";
@@ -33515,9 +33529,10 @@ var STATE_ACCESS = /state\.db|ledger\.key|\.proofloop[\\/]+(state|artifacts)|cli
 function bashDecision(command, agent) {
   if (STATE_ACCESS.test(command))
     return agent ? { decision: "deny", reason: "ProofLoop state, ledger key and CLI internals are not accessible to agent sessions" } : { decision: "ask", reason: "This command touches ProofLoop state or the ledger key; confirm it is intended" };
-  if (MUTATING.test(command)) {
+  const subs = subcommands(command);
+  if (subs.some((x) => MUTATING.has(x))) {
     if (agent) return { decision: "deny", reason: "ProofLoop state, approvals and gates can only be changed by the engine or a human, never by an agent session" };
-    if (HUMAN_ONLY.test(command)) return { decision: "ask", reason: "Approving or rejecting a ProofLoop plan is a human decision. Confirm you reviewed the plan." };
+    if (subs.some((x) => HUMAN_ONLY.has(x))) return { decision: "ask", reason: "Approving or rejecting a ProofLoop plan is a human decision. Confirm you reviewed the plan." };
   }
   for (const seg of [command, ...commandSegments(command)]) {
     const verdict = evaluateCommand(seg, { allowed: [["*"]] });

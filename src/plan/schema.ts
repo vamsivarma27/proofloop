@@ -107,6 +107,8 @@ export function validatePlan(input: unknown, opts: { protocolId?: string } = {})
 export function renderPlanMarkdown(plan: Plan, hash: string, version: number): string {
   const L: string[] = [];
   L.push(`# Plan v${version} (\`${hash.slice(0, 12)}\`)`, '', `**Intent:** ${plan.intent.summary}`, '', `**Outcome:** ${plan.intent.outcome}`, '');
+  const gates = Object.keys(plan.gateCommands).length;
+  L.push('## At a glance', '', '| Risk | Tasks | Acceptance criteria | Files in scope | Commands to approve |', '|---|---|---|---|---|', `| ${plan.risk.level} | ${plan.tasks.length} | ${plan.acceptanceCriteria.length} | ${plan.affectedModules.length} | ${gates} |`, '');
   if (plan.intent.nonGoals.length) L.push('**Non-goals:**', ...plan.intent.nonGoals.map((x) => `- ${x}`), '');
   L.push(`**Risk:** ${plan.risk.level} — ${plan.risk.rationale}`, '', '## Assumptions');
   L.push(...(plan.assumptions.length ? plan.assumptions.map((a) => `- ${a.id} [${a.impact}] ${a.confirmed ? 'confirmed' : '**unconfirmed**'}: ${a.text}`) : ['- none']), '', '## Affected modules');
@@ -115,5 +117,6 @@ export function renderPlanMarkdown(plan: Plan, hash: string, version: number): s
   L.push(...plan.testPlan.map((t) => `- ${t.id} [${t.kind}] ${t.description}${t.gateId ? ` → gate \`${t.gateId}\`` : ''}`), '', '## Tasks');
   L.push(...plan.tasks.map((t) => `- **${t.id}** ${t.title} (risk ${t.risk}) deps: ${t.dependencies.join(', ') || 'none'}; scope: ${t.fileScopes.join(', ')}; covers ${t.acceptanceCriteria.join(', ')}; done when: ${t.doneWhen}`));
   if (Object.keys(plan.gateCommands).length) L.push('', '## Commands approved with this plan', ...Object.entries(plan.gateCommands).map(([g, c]) => `- ${g}: \`${c}\``));
+  L.push('', '## What happens next', '1. You review this plan. Approval binds to the hash above; any change to the plan needs a new approval.', '2. Tasks run in an isolated worktree, in dependency order.', '3. Every acceptance criterion is checked by the gates on the final commit. Anything not proven is reported as such.');
   return `${L.join('\n')}\n`;
 }
