@@ -91,6 +91,24 @@ const MIGRATIONS: readonly string[] = [
   `
   ALTER TABLE gate_plan ADD COLUMN sig TEXT;
   `,
+  `
+  CREATE TABLE incident (
+    id TEXT PRIMARY KEY, task_run_id TEXT UNIQUE REFERENCES task_run(id), repository TEXT NOT NULL,
+    github_issue_number INTEGER, github_issue_url TEXT, title TEXT NOT NULL, summary TEXT NOT NULL,
+    base_revision TEXT, supersedes TEXT, created_at_utc TEXT NOT NULL
+  );
+  CREATE INDEX incident_repository ON incident (repository, created_at_utc);
+  -- An incident is its header plus append-only entries; corrections are new entries, never edits.
+  CREATE TABLE incident_entry (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT, incident_id TEXT NOT NULL REFERENCES incident(id),
+    key TEXT NOT NULL, kind TEXT NOT NULL, actor TEXT NOT NULL, data TEXT NOT NULL, ts_utc TEXT NOT NULL,
+    UNIQUE (incident_id, key)
+  );
+  CREATE TRIGGER incident_entry_no_update BEFORE UPDATE ON incident_entry BEGIN SELECT RAISE(ABORT, 'incident history is append-only'); END;
+  CREATE TRIGGER incident_entry_no_delete BEFORE DELETE ON incident_entry BEGIN SELECT RAISE(ABORT, 'incident history is append-only'); END;
+  CREATE TRIGGER incident_no_update BEFORE UPDATE ON incident BEGIN SELECT RAISE(ABORT, 'incident headers are immutable'); END;
+  CREATE TRIGGER incident_no_delete BEFORE DELETE ON incident BEGIN SELECT RAISE(ABORT, 'incident history is append-only'); END;
+  `,
 ];
 
 export function openDb(path: string): Db {

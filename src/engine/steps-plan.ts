@@ -10,6 +10,7 @@ import { RepoContext } from '../repo/context';
 import { isPlError } from '../shared/errors';
 import { REPRODUCTION_GATE } from './bug';
 import { type EngineDeps, callAgent, isRateLimited, loggerOf, worktreeRoot } from './deps';
+import { memoryContext } from './memory';
 import { planJsonSchema, plannerPrompt } from './prompts';
 
 const STOP = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'from', 'when', 'into', 'page', 'user', 'users', 'make', 'add', 'fix']);
@@ -24,7 +25,7 @@ export async function block(d: EngineDeps, runId: string, reason: string): Promi
 
 export function stepRecon(d: EngineDeps, runId: string): void {
   const s = d.store.beginStep(runId, 'recon');
-  d.store.transition(runId, 'PLANNING', { actor: 'engine' });
+  d.store.transition(runId, 'RETRIEVING_MEMORY', { actor: 'engine' });
   d.store.finishStep(s.id, { state: 'DONE' });
 }
 
@@ -44,7 +45,7 @@ export async function stepPlan(d: EngineDeps, runId: string): Promise<void> {
   const step = d.store.beginStep(runId, 'plan');
   let errors: string[] = [];
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const res = await callAgent(d, run, { role: 'planner', cwd: d.root, prompt: plannerPrompt({ protocol, intent: run.intent, detected: d.detected, files, priorErrors: errors }), jsonSchema: planJsonSchema() });
+    const res = await callAgent(d, run, { role: 'planner', cwd: d.root, prompt: plannerPrompt({ protocol, intent: run.intent, detected: d.detected, files, priorErrors: errors, history: memoryContext(d, runId) }), jsonSchema: planJsonSchema() });
     if (!res.ok) {
       d.store.finishStep(step.id, { state: 'FAILED', errorCategory: isRateLimited(res) ? 'rate-limit' : 'agent' });
       return block(d, runId, `planner failed: ${res.error}`);

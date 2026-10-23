@@ -2,6 +2,7 @@
 
 
 ## Unreleased
+- V0.2 engineering memory: `RETRIEVING_MEMORY` workflow state, append-only incident records (hypotheses vs evidence-confirmed root causes, preserved failed attempts), explainable historical retrieval over local incidents, GitHub issues/PRs and decision records with partial-failure reporting, and an exportable Proof Ledger (`proofloop ledger export`, JSON and Markdown) with revision-specific, stale-aware verification. See docs/guides/memory-and-ledger.md.
 - Real-model eval keeps the directory of any failed run and names it in the report notes, so unexplained failures can be diagnosed.
 - Claude Code marketplace manifest (`/plugin marketplace add vamsivarma27/proofloop`), scoped npm package `@vamsiivarmaa/proofloop` (publish tag `next`), new README with hero figure.
 - Fix: `bin/proofloop` failed when npm linked it into `node_modules/.bin` (symlink not resolved); found by installing the packed tarball into a fresh project. Covered by a test.

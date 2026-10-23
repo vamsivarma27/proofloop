@@ -11,6 +11,7 @@ import { type EngineDeps, callAgent, commitType, gateCtx, implementerTools } fro
 import { type Findings, findingsJsonSchema, findingsSchema, repairPrompt, reviewerPrompt } from './prompts';
 import { verifyEvidenceIntegrity } from './report';
 import { enforceScopeFor } from './scope';
+import { recordAttempt } from './memory';
 import { block, currentGateEntries, syncGatePlan } from './steps-plan';
 
 const LOG_TAIL_LINES = 60;
@@ -52,10 +53,12 @@ export async function stepVerify(d: EngineDeps, runId: string): Promise<void> {
   const rep = gateReport(d.store, runId);
   await d.github.checkpoint(runId, `verify-${head.slice(0, 8)}`, `Verification on \`${head.slice(0, 12)}\`:\n\n${rep.gates.map((g) => `- ${g.gateId}: **${g.state}**${g.required ? '' : ' (optional)'}`).join('\n')}`);
   if (rep.allRequiredPass) {
+    recordAttempt(d, runId, head, 'SUCCESS');
     d.store.transition(runId, 'REVIEW_REQUIRED', { actor: 'engine' });
     return;
   }
   const failing = results.filter((r) => r.required && r.state !== 'PASS');
+  if (rep.gates.every((g) => !g.required || ENGINE_GATE_IDS.includes(g.gateId))) recordAttempt(d, runId, head, 'FAILURE', { reason: 'no required gate could run', diagnosis: 'nothing to verify with' });
   if (rep.gates.every((g) => !g.required || ENGINE_GATE_IDS.includes(g.gateId))) return block(d, runId, `no required gate can run: ${unsupportedList(d, runId)}. A missing test is not a pass; set commands in .proofloop/config.json`);
   await routeFailure(d, runId, failing);
 }
@@ -65,6 +68,7 @@ const unsupportedList = (d: EngineDeps, runId: string): string => currentGateEnt
 async function routeFailure(d: EngineDeps, runId: string, failing: GateResultRow[]): Promise<void> {
   const classified = failing.map((r) => ({ r, cat: classifyFailure({ category: r.failureCategory, output: logTail(d, r), history: d.store.gateHistory(runId, r.gateId), commitSha: r.commitSha }) }));
   const desc = classified.map(({ r, cat }) => `${r.gateId}=${r.state}/${cat}`).join(', ');
+  recordAttempt(d, runId, failing[0]!.commitSha, 'FAILURE', { reason: failing.map((r) => `${r.gateId}=${r.state}`).join(', '), diagnosis: `${classified.map(({ cat }) => cat).join(', ')}: ${classified.map(({ r }) => r.fingerprint ?? '').join('|').slice(0, 120)}` });
   const unrepairable = classified.some(({ r, cat }) => r.state === 'BLOCKED' || ROUTE[cat] !== 'repair');
   if (unrepairable) return block(d, runId, `cannot be fixed by editing code: ${desc}`);
   const fp = failing.map((r) => `${r.gateId}:${r.fingerprint ?? ''}`).sort().join('|');
