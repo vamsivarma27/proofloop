@@ -83,8 +83,25 @@ export function testRequest(prompt: string): string[] | null {
   return words.every((w) => FILLER.has(w) || SUITE_NAMES.includes(w)) ? suites : null;
 }
 
+const MAX_AUDIT_WORDS = 25;
+const ms = (m: RegExpMatchArray | null): number | undefined => (m ? Math.round(Number(m[1]) * (m[2]?.toLowerCase() === 's' ? 1000 : 1)) : undefined);
+
+/** A short prompt containing the word "audit" asks for the scale/system-design audit; numbers it states (users, p95, p99) are passed on. */
+export function auditRequest(prompt: string): { users?: number; p95?: number; p99?: number } | null {
+  const words = prompt.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length > MAX_AUDIT_WORDS || !words.some((w) => /^audit/.test(w.replace(/[^a-z]/g, '')))) return null;
+  const users = /(\d[\d,]*(?:\.\d+)?)\s*(k)?\s*(?:concurrent\s+)?users?/i.exec(prompt);
+  const n = users ? Math.round(Number(users[1]!.replace(/,/g, '')) * (users[2] ? 1000 : 1)) : undefined;
+  return { ...(n ? { users: n } : {}), ...(ms(/p95\D{0,12}(\d+(?:\.\d+)?)\s*(ms|s)?/i.exec(prompt)) ? { p95: ms(/p95\D{0,12}(\d+(?:\.\d+)?)\s*(ms|s)?/i.exec(prompt))! } : {}), ...(ms(/p99\D{0,12}(\d+(?:\.\d+)?)\s*(ms|s)?/i.exec(prompt)) ? { p99: ms(/p99\D{0,12}(\d+(?:\.\d+)?)\s*(ms|s)?/i.exec(prompt))! } : {}) };
+}
+
 /** UserPromptSubmit: not a security control, so it fails open and only adds context. */
 export function promptHookOutput(prompt: string): string {
+  const audit = auditRequest(prompt);
+  if (audit) {
+    const flags = [audit.users ? `--users ${audit.users}` : '', audit.p95 ? `--p95 ${audit.p95}` : '', audit.p99 ? `--p99 ${audit.p99}` : ''].filter(Boolean).join(' ');
+    return JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: `The user asked for a ProofLoop audit (scale, latency percentiles and system design). Follow the /proofloop:audit skill now: run \`proofloop audit ${flags}\`${flags ? '' : ' (default 2000 users, p95 300 ms, p99 800 ms; say so)'}, then do the system-design review against the checklist with file:line evidence. Do not ask first.` } });
+  }
   const suites = testRequest(prompt);
   if (!suites) return '';
   const which = suites.length ? `only ${suites.join(', ')}` : 'every check';

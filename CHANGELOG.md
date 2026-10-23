@@ -1,6 +1,11 @@
 # Changelog
 
 
+## 1.0.0-rc.6
+- `proofloop audit` / `/proofloop:audit` (or typing "audit for 5000 users, p99 under 500ms"): capacity model, real latency probe (p50/p95/p99, errors) against targets, load-test gate, static scalability scan, and a system-design checklist review. Never reports ok unless something was measured. See docs/guides/audit-and-design.md.
+- Plans can carry a `design` section (expected scale, p95/p99/error targets, decisions per area); a stated scale requires a load/performance check; the planner, implementer and reviewer prompts use the design checklist.
+- Load scripts (`test:load`, `load`, `loadtest`, `bench`) are detected.
+
 ## 1.0.0-rc.5
 - `proofloop test` is now the full project test (the `test` protocol): lint, typecheck, unit/regression suite, build, integration, Playwright browser journeys once per persona (ordinary, impatient, unauthorized, accessibility), security scan and migration on the current commit, compared gate by gate with the merge base in a detached worktree (regression / pre-existing / fixed). Writes `.proofloop/test-runs/<time>/report.{md,json}` plus gate logs and evidence; failures become bugs (optionally GitHub issues via `--file-bugs`); a missing check is a coverage gap, never a pass. `/proofloop:test` and a bare "test" prompt run it without asking which suites.
 - The earlier scripted self-suites moved to `proofloop selftest`.

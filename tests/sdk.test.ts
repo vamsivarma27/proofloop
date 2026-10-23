@@ -14,6 +14,7 @@ import { agentRuntimeContract, githubPortContract, queryPlanContract, toolCompos
 import type { Exec, ExecResult } from '../src/shared/exec';
 import { approveAndRun, agents, engineFor, project } from './engine-helpers';
 import { initRepo } from './repo-helpers';
+import { ENGINE_VERSION } from '../src/version';
 
 const assert: Assert = {
   ok: (v, m) => expect(Boolean(v), m).toBe(true),
@@ -56,9 +57,10 @@ describe('shipped protocol examples (v0.7)', () => {
     const e = await engineFor(await project(), agents());
     const { runId } = await approveAndRun(e);
     const pinned = e.d.store.events(runId, 'protocol.pinned')[0]!.data;
-    expect(pinned).toMatchObject({ id: 'feature', version: '1.0.0', engine: '1.0.0-rc.5' });
+    expect(pinned).toMatchObject({ id: 'feature', version: '1.0.0', engine: ENGINE_VERSION });
     expect(String(pinned.sha256)).toMatch(/^[0-9a-f]{64}$/);
-    expect(e.report(runId)).toMatch(/Protocol: feature@1\.0\.0 \(sha256 [0-9a-f]{12}\), plugin\/engine 1\.0\.0-rc\.5/);
+    expect(e.report(runId)).toMatch(/Protocol: feature@1\.0\.0 \(sha256 [0-9a-f]{12}\), plugin\/engine /);
+    expect(e.report(runId)).toContain(`plugin/engine ${ENGINE_VERSION}`);
   });
 });
 

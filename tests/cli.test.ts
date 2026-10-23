@@ -237,3 +237,15 @@ describe('prompt hook: a bare test request starts the testing protocol', () => {
     expect(hooks.hooks.UserPromptSubmit[0].hooks[0].args).toEqual(['hook', 'user-prompt']);
   });
 });
+
+describe('audit prompt hook', () => {
+  it('reads users and percentile targets from a short audit prompt, and ignores other prompts', async () => {
+    const { auditRequest, promptHookOutput } = await import('../src/cli/hook');
+    expect(auditRequest('audit')).toEqual({});
+    expect(auditRequest('audit this for 5,000 users with p95 under 250ms and p99 1s')).toEqual({ users: 5000, p95: 250, p99: 1000 });
+    expect(auditRequest('audit for 2k users')).toEqual({ users: 2000 });
+    expect(auditRequest('please write the audit log table migration for the billing service so that every change is recorded with the user id and the time and the reason for it')).toBeNull();
+    expect(auditRequest('fix the bug')).toBeNull();
+    expect(JSON.parse(promptHookOutput('audit for 3000 users')).hookSpecificOutput.additionalContext).toContain('proofloop audit --users 3000');
+  });
+});

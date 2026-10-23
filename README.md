@@ -10,7 +10,7 @@ A Claude Code plugin that wraps every change in a plan you approve, gates that m
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/@vamsiivarmaa/proofloop/next)](https://www.npmjs.com/package/@vamsiivarmaa/proofloop)
-![Status](https://img.shields.io/badge/status-1.0.0--rc.5-orange)
+![Status](https://img.shields.io/badge/status-1.0.0--rc.6-orange)
 ![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.13-339933)
 
 </div>
@@ -85,6 +85,8 @@ proofloop run <run-id>                        implement, verify, review, open a 
 ```
 
 Type `test` (or `/proofloop:test`, or `proofloop test [unit browser ...]`) for the full project test: every check on the current commit, Playwright journeys per persona, and a regression comparison with your base branch, with a report, logs and a bug list. `proofloop selftest` runs ProofLoop's own scripted suites.
+
+Type `audit for 5000 users, p99 under 500ms` (or `/proofloop:audit`) for a scale and system-design audit: measured p50/p95/p99 and error rate, load test, scalability smells, and a design review. Plans also record expected scale and design decisions up front. See [audit and design](docs/guides/audit-and-design.md).
 
 Other protocols: `:bug`, `:diagnose`, `:performance`, `:verify`, and `:start-project` (idea → researched blueprint → roadmap issues).
 
