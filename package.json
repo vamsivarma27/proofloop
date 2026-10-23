@@ -1,6 +1,6 @@
 {
   "name": "@vamsiivarmaa/proofloop",
-  "version": "1.0.0-rc.5",
+  "version": "1.0.0-rc.6",
   "description": "Protocol-driven, evidence-based engineering harness and Claude Code plugin",
   "license": "Apache-2.0",
   "type": "module",

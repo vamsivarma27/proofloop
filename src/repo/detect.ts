@@ -23,6 +23,7 @@ const SCRIPT_CANDIDATES: ReadonlyArray<[GateKind, readonly string[]]> = [
   ['build', ['build']],
   ['integration', ['test:integration', 'integration']],
   ['browser', ['test:e2e', 'e2e', 'test:browser', 'playwright']],
+  ['load', ['test:load', 'load', 'loadtest', 'load-test', 'bench']],
   ['security-scan', ['audit', 'security', 'scan']],
   ['migration', ['migrate:check', 'db:check']],
 ];
