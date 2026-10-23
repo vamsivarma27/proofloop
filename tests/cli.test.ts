@@ -212,7 +212,7 @@ describe('launcher', () => {
 describe('proofloop test command', () => {
   it('lists suites', async () => {
     const h = harness(tmp());
-    expect(await runCli(['test', '--list'], h.env)).toBe(0);
+    expect(await runCli(['selftest', '--list'], h.env)).toBe(0);
     expect(h.text()).toContain('recovery');
   });
 });
@@ -221,9 +221,9 @@ describe('prompt hook: a bare test request starts the testing protocol', () => {
   it('matches test requests only, and names the suites', async () => {
     const { testRequest, promptHookOutput } = await import('../src/cli/hook');
     for (const p of ['test', 'Test!', 'run all tests', 'please run the tests', 'proofloop test everything']) expect(testRequest(p), p).toEqual([]);
-    expect(testRequest('test bug and recovery')).toEqual(['bug', 'recovery']);
+    expect(testRequest('test unit and browser')).toEqual(['unit', 'browser']);
     for (const p of ['test the login page', 'fix the failing test in auth', 'add a feature', '']) expect(testRequest(p), p).toBeNull();
-    expect(JSON.parse(promptHookOutput('test bug')).hookSpecificOutput.additionalContext).toContain('bug suite');
+    expect(JSON.parse(promptHookOutput('test browser')).hookSpecificOutput.additionalContext).toContain('only browser');
     expect(promptHookOutput('hello')).toBe('');
   });
 

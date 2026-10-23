@@ -60,4 +60,4 @@ All four ✅ in `tests/sdk.test.ts`. ⚠ Contract kit is source-level (copy from
 | Release artifacts, changelog, compatibility policy | ⚠ changelog, policy and release workflow exist; `v1.0.0-rc.1` is tagged on `develop`; no `v1.0.0` (the criteria below are unmet) |
 | Known limitations explicit | ✅ |
 
-The version is `1.0.0-rc.4` (Apache-2.0, `v1.0.0-rc.1` tagged earlier). Remaining before 1.0.0: a human or third-party security review, a real-model evaluation that shows the harness helps (the first one does not), and a Cloudflare bridge run against a real Worker.
+The version is `1.0.0-rc.5` (Apache-2.0, `v1.0.0-rc.1` tagged earlier). Remaining before 1.0.0: a human or third-party security review, a real-model evaluation that shows the harness helps (the first one does not), and a Cloudflare bridge run against a real Worker.

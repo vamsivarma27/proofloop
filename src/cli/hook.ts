@@ -73,9 +73,9 @@ export function hookOutput(d: HookDecision): string {
 }
 
 const FILLER = new Set(['please', 'proofloop', 'run', 'the', 'and', 'only', 'suite', 'suites', 'test', 'tests', 'testing', 'every', 'everything', 'all']);
-const SUITE_NAMES = ['feature', 'bug', 'integration', 'browser', 'performance', 'recovery', 'blocked'];
+const SUITE_NAMES = ['unit', 'lint', 'typecheck', 'build', 'integration', 'browser', 'security', 'migration', 'regression'];
 
-/** A prompt that is only "test", "run all tests", "test bug and recovery"... returns the suites asked for ([] = ask or all); anything else is not a test request. */
+/** A prompt that is only "test", "run all tests", "test unit and browser"... returns the checks named ([] = everything); anything else is not a test request. */
 export function testRequest(prompt: string): string[] | null {
   const words = prompt.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
   if (!words.some((w) => w.startsWith('test'))) return null;
@@ -87,7 +87,7 @@ export function testRequest(prompt: string): string[] | null {
 export function promptHookOutput(prompt: string): string {
   const suites = testRequest(prompt);
   if (!suites) return '';
-  const which = suites.length ? `the ${suites.join(', ')} suite(s)` : 'all suites if the user said all/everything, otherwise ask which suites';
-  const additionalContext = `The user asked to run the ProofLoop testing protocol. Follow the /proofloop:test skill now: run \`proofloop test\` for ${which} (end to end through the real engine), then report the table, every bug, and the report.md and log.jsonl paths exactly as printed.`;
+  const which = suites.length ? `only ${suites.join(', ')}` : 'every check';
+  const additionalContext = `The user asked to run the ProofLoop test protocol on THIS project. Follow the /proofloop:test skill now, covering ${which}: full checks on the current commit, browser journeys with personas, and a regression comparison with the base branch. Do not ask which suites; run it.`;
   return JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext } });
 }

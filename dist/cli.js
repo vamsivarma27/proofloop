@@ -28214,12 +28214,12 @@ var init_workflow = __esm({
 });
 
 // src/cli/main.ts
-import { closeSync, openSync, readFileSync as readFileSync17, readSync } from "node:fs";
+import { closeSync, openSync, readFileSync as readFileSync18, readSync } from "node:fs";
 
 // src/cli/index.ts
 import { parseArgs } from "node:util";
-import { existsSync as existsSync18, mkdirSync as mkdirSync13, readFileSync as readFileSync16, writeFileSync as writeFileSync12 } from "node:fs";
-import { dirname as dirname9, join as join27, resolve as resolve2 } from "node:path";
+import { existsSync as existsSync19, mkdirSync as mkdirSync14, readFileSync as readFileSync17, writeFileSync as writeFileSync13 } from "node:fs";
+import { dirname as dirname9, join as join28, resolve as resolve2 } from "node:path";
 
 // src/shared/exec.ts
 import { execFile } from "node:child_process";
@@ -28836,7 +28836,7 @@ import { dirname, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/version.ts
-var ENGINE_VERSION = "1.0.0-rc.4";
+var ENGINE_VERSION = "1.0.0-rc.5";
 
 // src/protocol/registry.ts
 init_schema();
@@ -30113,9 +30113,9 @@ async function recordReproduction(d, run, plan, cwd) {
 ${r.stdout}
 ${r.stderr}`);
   const uri = join8(d.root, ".proofloop", "artifacts", run.id, `reproduction-${head.slice(0, 8)}.log`);
-  const { mkdirSync: mkdirSync14, writeFileSync: writeFileSync13 } = await import("node:fs");
-  mkdirSync14(join8(uri, ".."), { recursive: true });
-  writeFileSync13(uri, log);
+  const { mkdirSync: mkdirSync15, writeFileSync: writeFileSync14 } = await import("node:fs");
+  mkdirSync15(join8(uri, ".."), { recursive: true });
+  writeFileSync14(uri, log);
   d.store.addEvidence({ taskRunId: run.id, gateId: "reproduction-proven", kind: "reproduction", uri, checksum: sha256(log), commitSha: head, environment: environmentOf(d), summary: `${state}: regression test ${state === "FAIL" ? "fails before the fix" : "already passes before the fix"}`, redactionStatus: "redacted" });
 }
 async function reproductionProven(ctx) {
@@ -31712,9 +31712,9 @@ async function writeBlueprintDocs(d, runId) {
   const run = d.store.getRun(runId);
   const needs = JSON.parse(d.store.getKey(`needs-confirmation:${runId}`) ?? "[]");
   for (const f of blueprintDocs(getBlueprint(d.store, runId), run.currentPlanHash, needs)) {
-    const { mkdirSync: mkdirSync14, writeFileSync: writeFileSync13 } = await import("node:fs");
-    mkdirSync14(join13(run.worktreePath, f.path, ".."), { recursive: true });
-    writeFileSync13(join13(run.worktreePath, f.path), f.content);
+    const { mkdirSync: mkdirSync15, writeFileSync: writeFileSync14 } = await import("node:fs");
+    mkdirSync15(join13(run.worktreePath, f.path, ".."), { recursive: true });
+    writeFileSync14(join13(run.worktreePath, f.path), f.content);
   }
   const sha2 = await d.git.commitAll(run.worktreePath, "docs: add product blueprint, roadmap and decision records");
   if (sha2) d.store.setFields(runId, { headSha: sha2 });
@@ -33450,9 +33450,105 @@ async function runSuites(o) {
   return report;
 }
 
+// src/engine/testrun.ts
+import { existsSync as existsSync18, mkdirSync as mkdirSync13, readFileSync as readFileSync16, readdirSync as readdirSync7, symlinkSync as symlinkSync2, writeFileSync as writeFileSync12 } from "node:fs";
+import { basename as basename5, join as join26 } from "node:path";
+init_errors3();
+var TEST_PERSONAS = ["ordinary-user", "impatient-user", "unauthorized-user", "accessibility"];
+function verdictOf(state, baseline, command) {
+  if (state === "PASS") return baseline === "FAIL" ? "fixed" : "pass";
+  if (state === "BLOCKED" && command === null) return "gap";
+  if (state === "FAIL") return baseline === "PASS" ? "regression" : baseline === "FAIL" ? "pre-existing" : "fail";
+  return "fail";
+}
+function bugsOf2(rows, head) {
+  return rows.filter((r) => ["regression", "pre-existing", "fail"].includes(r.verdict)).map((r) => ({
+    key: `test:${r.gateId}:${r.verdict}`,
+    title: `${r.verdict === "regression" ? "Regression" : "Failing check"}: ${r.gateId} on ${head.slice(0, 8)}`,
+    body: `Gate \`${r.gateId}\` (${r.kind}) is ${r.state}${r.category ? ` (${r.category})` : ""} on commit ${head}. Base branch: ${r.baseline ?? "not compared"}. Verdict: **${r.verdict}**${r.verdict === "regression" ? " - it passed on the base branch and fails now" : ""}.
+
+Command: \`${r.command ?? "none"}\``
+  }));
+}
+function renderTestMarkdown(r) {
+  const L = ["# ProofLoop test report", "", `Engine ${r.engine} \xB7 commit \`${r.head.slice(0, 12)}\` \xB7 base ${r.base ? `\`${r.base.slice(0, 12)}\`` : "none (not compared)"}`, "", `**${r.passed ? "PASSED" : "NOT PASSED"}** - ${r.rows.filter((x) => x.verdict === "regression").length} regression(s), ${r.bugs.length} bug(s), ${r.gaps.length} coverage gap(s)`, "", "| Check | Kind | Result | Base branch | Verdict |", "|---|---|---|---|---|"];
+  for (const x of r.rows) L.push(`| ${x.gateId} | ${x.kind} | ${x.state}${x.category ? ` (${x.category})` : ""} | ${x.baseline ?? "-"} | ${x.verdict === "regression" ? "**regression**" : x.verdict} |`);
+  for (const x of r.rows) if (x.excerpt) L.push("", `### ${x.gateId} output (tail)`, "", "```", x.excerpt, "```");
+  L.push("", "## Bugs", "", ...r.bugs.length ? r.bugs.map((b) => `- **${b.title}**
+  ${b.body.split("\n").join("\n  ")}`) : ["None."]);
+  L.push("", `Gate logs and evidence: \`${r.logs}\``, "", "## Not covered", "", ...r.gaps.length ? r.gaps.map((g) => `- ${g}`) : ["None."], "", "## Limits", "", ...r.limitations.map((x) => `- ${x}`), "");
+  return L.join("\n");
+}
+async function runOn(d, cwd, head, intent, only) {
+  const protocol = d.registry.get("test");
+  const projectId = d.store.ensureProject({ name: basename5(d.root), repository: await d.git.remoteRepo(d.root), defaultBranch: await d.git.defaultBranch(d.root), detectedStack: d.detected });
+  const run = d.store.createRun({ projectId, protocolId: protocol.id, protocolVersion: protocol.version, intent, risk: "high", repairBudget: 0 });
+  d.store.setFields(run.id, { headSha: head, baseCommit: head, worktreePath: cwd });
+  const plan = buildGatePlan(protocol, "high", d.detected, d.config).filter((e) => !only?.length || only.includes(e.gateId) || only.includes(e.kind));
+  d.store.setGatePlan(run.id, plan.map((e) => ({ gateId: e.gateId, kind: e.kind, required: e.required, command: e.command })));
+  const ctx = gateCtx(d, run.id, cwd, head);
+  await runGates({ ...ctx, personas: d.config.app.personas.length ? d.config.app.personas : TEST_PERSONAS }, plan);
+  return { runId: run.id, plan };
+}
+var stateOf = (d, runId, gateId) => {
+  const last = d.store.gateHistory(runId, gateId).at(-1);
+  return { state: last?.state ?? "MISSING", category: last?.failureCategory ?? null };
+};
+async function baselineStates(d, base, only) {
+  const dir = join26(stateDir(d.root), "worktrees", `test-base-${base.slice(0, 8)}`);
+  await d.git.run(d.root, ["worktree", "prune"], { allowFail: true });
+  await d.git.run(d.root, ["worktree", "add", "--detach", "--force", dir, base]);
+  try {
+    for (const m of ["node_modules", ".venv"]) if (existsSync18(join26(d.root, m)) && !existsSync18(join26(dir, m))) symlinkSync2(join26(d.root, m), join26(dir, m));
+    const { runId, plan } = await runOn(d, dir, base, `test baseline ${base.slice(0, 12)}`, only);
+    return new Map(plan.map((e) => [e.gateId, stateOf(d, runId, e.gateId).state]));
+  } finally {
+    await d.git.removeWorktree(d.root, dir);
+  }
+}
+function excerptOf(dir, gateId) {
+  if (!existsSync18(dir)) return void 0;
+  const f = readdirSync7(dir).filter((x) => x.startsWith(`${gateId}-`) && x.endsWith(".log")).sort().at(-1);
+  return f ? readFileSync16(join26(dir, f), "utf8").split("\n").slice(-25).join("\n") : void 0;
+}
+async function testCurrent(d, o = {}) {
+  const cwd = o.cwd ?? d.root;
+  excludeStateDir(d.root);
+  const head = await d.git.head(cwd);
+  if (!await d.git.isClean(cwd)) throw new PlError("PL_VERIFY_001", "working tree has uncommitted changes; commit first so evidence maps to a commit");
+  const defaultBranch = await d.git.defaultBranch(d.root);
+  const base = o.baseline === false ? null : await d.git.run(cwd, ["merge-base", head, defaultBranch], { allowFail: true }) || null;
+  const comparable = base !== null && base !== head;
+  const before = comparable ? await baselineStates(d, base, o.only) : /* @__PURE__ */ new Map();
+  const { runId, plan } = await runOn(d, cwd, head, `test ${head.slice(0, 12)}`, o.only);
+  const rows = plan.map((e) => {
+    const now = stateOf(d, runId, e.gateId);
+    const baseline = before.get(e.gateId) ?? null;
+    return { gateId: e.gateId, kind: e.kind, command: e.command, state: now.state, baseline, verdict: verdictOf(now.state, baseline, e.command), category: now.category };
+  });
+  const required2 = new Set(plan.filter((e) => e.required).map((e) => e.gateId));
+  const logs = join26(artifactDir(d), runId);
+  for (const r of rows) if (r.state === "FAIL") r.excerpt = excerptOf(logs, r.gateId);
+  const gaps = rows.filter((r) => r.verdict === "gap").map((r) => `${r.kind}: no command detected, so nothing ${r.kind === "browser" ? "exercised the running application (no Playwright journeys)" : "ran for this check"}${required2.has(r.gateId) ? " (required: this blocks a pass)" : " (optional)"}. Add one (or ask Claude to write it) and re-run.`);
+  const bugs2 = bugsOf2(rows, head);
+  const limitations2 = [
+    comparable ? "Regression = a check that passed on the merge base and fails now. The base ran in a detached worktree sharing this repository's installed dependencies; a base failure caused by that is reported as pre-existing, not as a regression." : "No separate base commit (you are on the base branch or comparison was off), so regressions cannot be told apart from older failures.",
+    "Browser journeys are only as good as the Playwright tests the repository already has; ProofLoop runs them per persona and does not invent them here.",
+    "Failing gates are bugs in the project or its tests; a BLOCKED gate (no command, no browser) is a coverage gap and is never counted as a pass."
+  ];
+  const dir = join26(stateDir(d.root), "test-runs", clockOf(d).nowIso().replace(/[:.]/g, "-"));
+  mkdirSync13(dir, { recursive: true });
+  const report = { engine: ENGINE_VERSION, head, base: comparable ? base : null, runId, rows, bugs: bugs2, gaps, limitations: limitations2, dir, logs, passed: rows.every((r) => required2.has(r.gateId) ? r.verdict === "pass" || r.verdict === "fixed" : r.verdict !== "regression" && r.verdict !== "fail" && r.verdict !== "pre-existing") };
+  if (o.github) for (const b of bugs2) await o.github.ensureIssue(b.key, b.title, b.body, ["bug"]);
+  writeFileSync12(join26(dir, "report.json"), `${JSON.stringify(report, null, 2)}
+`);
+  writeFileSync12(join26(dir, "report.md"), renderTestMarkdown(report));
+  return report;
+}
+
 // src/evals/real.ts
 import { cpSync as cpSync2, rmSync as rmSync2 } from "node:fs";
-import { join as join26 } from "node:path";
+import { join as join27 } from "node:path";
 init_workflow();
 import { arch as arch2, platform as platform2 } from "node:os";
 var REAL_EXCLUDED = /* @__PURE__ */ new Set(["bug-4-cannot-reproduce-timeout", "bug-2-regression-test-already-passes", "feature-5-out-of-scope-edits"]);
@@ -33523,7 +33619,7 @@ async function guarded(t, mode, cap, fn) {
   }
 }
 async function runRealEvals(opts) {
-  const claude = new ClaudeCodeRuntime({ guardCommand: join26(pluginRoot(), "bin", "proofloop"), ...opts.model ? { model: opts.model } : {} });
+  const claude = new ClaudeCodeRuntime({ guardCommand: join27(pluginRoot(), "bin", "proofloop"), ...opts.model ? { model: opts.model } : {} });
   if (!opts.runtime) {
     const v = await claude.checkVersion();
     if (!v.ok) throw new Error(`cannot run real-model evals: ${v.problem}`);
@@ -33617,7 +33713,7 @@ function hookOutput(d) {
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: d.decision, permissionDecisionReason: d.reason } });
 }
 var FILLER = /* @__PURE__ */ new Set(["please", "proofloop", "run", "the", "and", "only", "suite", "suites", "test", "tests", "testing", "every", "everything", "all"]);
-var SUITE_NAMES = ["feature", "bug", "integration", "browser", "performance", "recovery", "blocked"];
+var SUITE_NAMES = ["unit", "lint", "typecheck", "build", "integration", "browser", "security", "migration", "regression"];
 function testRequest(prompt) {
   const words = prompt.toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
   if (!words.some((w) => w.startsWith("test"))) return null;
@@ -33627,8 +33723,8 @@ function testRequest(prompt) {
 function promptHookOutput(prompt) {
   const suites = testRequest(prompt);
   if (!suites) return "";
-  const which = suites.length ? `the ${suites.join(", ")} suite(s)` : "all suites if the user said all/everything, otherwise ask which suites";
-  const additionalContext = `The user asked to run the ProofLoop testing protocol. Follow the /proofloop:test skill now: run \`proofloop test\` for ${which} (end to end through the real engine), then report the table, every bug, and the report.md and log.jsonl paths exactly as printed.`;
+  const which = suites.length ? `only ${suites.join(", ")}` : "every check";
+  const additionalContext = `The user asked to run the ProofLoop test protocol on THIS project. Follow the /proofloop:test skill now, covering ${which}: full checks on the current commit, browser journeys with personas, and a regression comparison with the base branch. Do not ask which suites; run it.`;
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext } });
 }
 
@@ -33646,7 +33742,8 @@ Evidence:       verify \xB7 report <id> [--out file] \xB7 readiness <id> \xB7 pl
 Memory:         ledger export <id> [--format json|markdown] [--out file] \xB7 memory <id> \xB7 incident list|show <id>|confirm <id> --text T --yes
 Artifacts:      artifact add|list <id> [name --file f] \xB7 perf record|import-k6 <id> --file f
 Evaluation:     eval [task-id-substring...] \xB7 eval composer \xB7 eval --runtime claude [--max-usd 1] [--total-usd 10] [--model m]  (real model; spends money)
-Testing:        test [suite...|all] \xB7 test --list \xB7 test --file-bugs owner/repo   (end-to-end suites: logs, report, bug list)
+Testing:        test [gate...] [--no-baseline] [--file-bugs]  (full project test: all checks, browser personas, regression vs base)
+                selftest [suite...|all] \xB7 selftest --list   (ProofLoop's own end-to-end suites)
 Setup:          setup [--yes] [--github owner/repo] \xB7 protocols \xB7 protocol validate <file...>
 Options:        --root <dir> \xB7 --json
 `;
@@ -33667,8 +33764,8 @@ function outcomeText(o, next) {
 `;
 }
 async function engineOf(c, root) {
-  const runtime = c.makeRuntime?.(root) ?? new ClaudeCodeRuntime({ guardCommand: join27(pluginRoot(), "bin", "proofloop") });
-  const logFile = join27(root, ".proofloop", "logs", "proofloop.log");
+  const runtime = c.makeRuntime?.(root) ?? new ClaudeCodeRuntime({ guardCommand: join28(pluginRoot(), "bin", "proofloop") });
+  const logFile = join28(root, ".proofloop", "logs", "proofloop.log");
   return createEngine({ root, runtime, logger: new FileLogger(logFile) });
 }
 async function runCli(argv, c) {
@@ -33684,7 +33781,7 @@ async function runCli(argv, c) {
     if (!cmd2 || cmd2 === "help" || cmd2 === "--help") return c.io.out(HELP), EXIT.ok;
     if (cmd2 === "hook") return hook(c, rest[0]);
     if (cmd2 === "eval") return await evalCmd(c, rest, values, json2, await rootOf(c, values.root));
-    if (cmd2 === "test") return await testCmd(c, rest, values, json2, await rootOf(c, values.root));
+    if (cmd2 === "selftest") return await testCmd(c, rest, values, json2, await rootOf(c, values.root));
     if (cmd2 === "protocols") return protocols(c, json2, await rootOf(c, values.root));
     if (cmd2 === "protocol" && rest[0] === "validate") return validate2(c, rest.slice(1));
     const root = await rootOf(c, values.root);
@@ -33699,6 +33796,7 @@ async function runCli(argv, c) {
 }
 async function withEngine(c, root, cmd2, rest, v, json2) {
   const e = await engineOf(c, root);
+  if (cmd2 === "test") return await projectTest(c, e, rest, v, json2);
   const protocolId = PROTOCOL_COMMANDS[cmd2];
   if (protocolId) {
     const intent = rest.join(" ").trim();
@@ -33745,9 +33843,9 @@ async function withEngine(c, root, cmd2, rest, v, json2) {
     case "report": {
       if (!id3) return c.io.err("usage: proofloop report <id> [--out file]\n"), EXIT.usage;
       const md = e.report(id3);
-      const dest = v.out ?? join27(root, ".proofloop", "reports", `${id3}.md`);
-      mkdirSync13(dirname9(dest), { recursive: true });
-      writeFileSync12(dest, md);
+      const dest = v.out ?? join28(root, ".proofloop", "reports", `${id3}.md`);
+      mkdirSync14(dirname9(dest), { recursive: true });
+      writeFileSync13(dest, md);
       show(c, json2, { path: dest }, `${md}
 written to ${dest}
 `);
@@ -33845,7 +33943,7 @@ async function planCmd(c, e, rest, v, json2) {
   }
   if (sub === "submit") {
     const file2 = v.file;
-    const raw = file2 ? readFileSync16(file2, "utf8") : c.io.stdin();
+    const raw = file2 ? readFileSync17(file2, "utf8") : c.io.stdin();
     return await submit(c, id3, raw, e);
   }
   return c.io.err("usage: proofloop plan show|submit <id>\n"), EXIT.usage;
@@ -33896,7 +33994,7 @@ These are ASSUMPTIONS: list each as an unconfirmed assumption in the blueprint.
     return EXIT.ok;
   }
   if (sub === "submit") {
-    const raw = v.file ? readFileSync16(String(v.file), "utf8") : c.io.stdin();
+    const raw = v.file ? readFileSync17(String(v.file), "utf8") : c.io.stdin();
     const r = submitBlueprint(st, id3, JSON.parse(raw));
     c.io.out(`${r.markdown}
 blueprint hash: ${r.hash}
@@ -33921,9 +34019,9 @@ function artifactCmd(c, e, rest, v, json2, root) {
     return EXIT.ok;
   }
   if (sub !== "add" || !id3 || !name) return c.io.err('usage: proofloop artifact add <id> <name> (--file path | --text "...") | artifact list <id>\n'), EXIT.usage;
-  const content = v.file ? readFileSync16(String(v.file), "utf8") : String(v.text ?? "");
+  const content = v.file ? readFileSync17(String(v.file), "utf8") : String(v.text ?? "");
   if (!content.trim()) return c.io.err("artifact content is empty\n"), EXIT.usage;
-  const evd = addArtifact(e.d.store, id3, { name, content, artifactDir: join27(root, ".proofloop", "artifacts"), commitSha: e.d.store.getRun(id3).headSha ?? void 0 });
+  const evd = addArtifact(e.d.store, id3, { name, content, artifactDir: join28(root, ".proofloop", "artifacts"), commitSha: e.d.store.getRun(id3).headSha ?? void 0 });
   c.io.out(`recorded artifact ${name} (${evd})
 `);
   return EXIT.ok;
@@ -33931,38 +34029,38 @@ function artifactCmd(c, e, rest, v, json2, root) {
 function perfCmd(c, e, rest, v, json2, root) {
   const [sub, id3] = rest;
   if (!id3 || !v.file) return c.io.err("usage: proofloop perf record <id> --file measurement.json | perf import-k6 <id> --file k6.json --meta meta.json\n"), EXIT.usage;
-  let input2 = JSON.parse(readFileSync16(String(v.file), "utf8"));
+  let input2 = JSON.parse(readFileSync17(String(v.file), "utf8"));
   if (sub === "import-k6") {
     if (!v.meta) return c.io.err("import-k6 needs --meta with phase, environment, workload, target, commit, capturedAt\n"), EXIT.usage;
-    input2 = fromK6Summary(input2, JSON.parse(readFileSync16(String(v.meta), "utf8")));
+    input2 = fromK6Summary(input2, JSON.parse(readFileSync17(String(v.meta), "utf8")));
   } else if (sub !== "record") return c.io.err("usage: proofloop perf record|import-k6 <id> ...\n"), EXIT.usage;
-  const r = recordMeasurement(e.d.store, id3, input2, join27(root, ".proofloop", "artifacts"));
+  const r = recordMeasurement(e.d.store, id3, input2, join28(root, ".proofloop", "artifacts"));
   show(c, json2, r.measurement, `recorded ${r.measurement.phase} (${r.measurement.kind}, n=${sampleCount(r.measurement)}) at ${r.measurement.commit.slice(0, 8)}
 `);
   return EXIT.ok;
 }
 async function evalCmd(c, rest, v, json2, root) {
-  const out = resolve2(c.cwd, String(v.out ?? join27(root, "evals", "reports")));
-  mkdirSync13(out, { recursive: true });
+  const out = resolve2(c.cwd, String(v.out ?? join28(root, "evals", "reports")));
+  mkdirSync14(out, { recursive: true });
   if (rest[0] === "composer") {
     const rep2 = await runComposerBench(5, 60);
-    writeFileSync12(join27(out, "composer-bench.json"), `${JSON.stringify(rep2, null, 2)}
+    writeFileSync13(join28(out, "composer-bench.json"), `${JSON.stringify(rep2, null, 2)}
 `);
     show(c, json2, rep2, `sequential: ${rep2.sequential.roundTrips} round trips, ${rep2.sequential.contextBytes} context bytes
 composed:   ${rep2.composed ? `${rep2.composed.roundTrips} round trip, ${rep2.composed.contextBytes} context bytes` : "unavailable on this Node"}
 ${rep2.note}
-written to ${join27(out, "composer-bench.json")}
+written to ${join28(out, "composer-bench.json")}
 `);
     return EXIT.ok;
   }
   const only = rest.length ? rest : void 0;
   if (v.runtime === "claude") {
-    const reuse = v["reuse-baseline"] ? JSON.parse(readFileSync16(String(v["reuse-baseline"]), "utf8")) : void 0;
+    const reuse = v["reuse-baseline"] ? JSON.parse(readFileSync17(String(v["reuse-baseline"]), "utf8")) : void 0;
     const real = await runRealEvals({ reuse, only, perTaskUsd: Number(v["max-usd"] ?? 1), totalUsd: Number(v["total-usd"] ?? 10), model: v.model, log: (l) => c.io.err(`${l}
 `) });
-    writeFileSync12(join27(out, "real-model.json"), `${JSON.stringify(real, null, 2)}
+    writeFileSync13(join28(out, "real-model.json"), `${JSON.stringify(real, null, 2)}
 `);
-    writeFileSync12(join27(out, "real-model.md"), renderRealMarkdown(real));
+    writeFileSync13(join28(out, "real-model.md"), renderRealMarkdown(real));
     show(c, json2, real.summary, `${renderRealMarkdown(real)}
 written to ${out}
 `);
@@ -33970,13 +34068,28 @@ written to ${out}
   }
   const rep = await runEvals({ only, log: (l) => c.io.err(`${l}
 `) });
-  writeFileSync12(join27(out, "latest.json"), `${JSON.stringify(rep, null, 2)}
+  writeFileSync13(join28(out, "latest.json"), `${JSON.stringify(rep, null, 2)}
 `);
-  writeFileSync12(join27(out, "latest.md"), renderEvalMarkdown(rep));
+  writeFileSync13(join28(out, "latest.md"), renderEvalMarkdown(rep));
   show(c, json2, rep.summary, `${renderEvalMarkdown(rep)}
 written to ${out}
 `);
   return rep.proofloop.every((r) => r.correct) && rep.summary.proofloop.safetyIncidents === 0 ? EXIT.ok : EXIT.error;
+}
+async function projectTest(c, e, only, v, json2) {
+  const rep = await testCurrent(e.d, { cwd: e.d.root, only, baseline: v["no-baseline"] !== true, github: v["file-bugs"] === true ? e.d.port : null });
+  const rows = rep.rows.map((r) => `${r.verdict === "pass" || r.verdict === "fixed" ? "ok  " : r.verdict === "gap" ? "gap " : "FAIL"} ${r.gateId.padEnd(14)} ${r.state.padEnd(8)} base:${(r.baseline ?? "-").padEnd(8)} ${r.verdict}`).join("\n");
+  show(c, json2, rep, `${rows}
+${rep.rows.filter((r) => r.excerpt).map((r) => `
+--- ${r.gateId} failure (tail) ---
+${r.excerpt}
+`).join("")}
+${rep.passed ? "PASSED" : "NOT PASSED"}: ${rep.bugs.length} bug(s), ${rep.gaps.length} coverage gap(s)
+${rep.gaps.map((g) => `  gap: ${g}
+`).join("")}report: ${join28(rep.dir, "report.md")}
+logs:   ${rep.logs}
+`);
+  return rep.passed ? EXIT.ok : EXIT.blocked;
 }
 async function testCmd(c, rest, v, json2, root) {
   if (v.list === true) return show(c, json2, SUITES, `${Object.entries(SUITES).map(([k, d]) => `${k.padEnd(12)} ${d}`).join("\n")}
@@ -33988,8 +34101,8 @@ all          every suite above
 `), ...slug ? { github: new GhAdapter(slug) } : {} });
   show(c, json2, rep, `${rep.outcomes.map((o) => `${o.correct ? "pass" : "FAIL"}  ${o.category.padEnd(12)} ${o.id.padEnd(42)} ${o.finalState} (${o.elapsedMs} ms)`).join("\n")}
 ${rep.passed} passed, ${rep.failed} failed. ${rep.bugs.length} bug(s).
-${rep.bugs.map((b) => `  - ${b.title}`).join("\n")}${rep.bugs.length ? "\n" : ""}report: ${join27(rep.dir, "report.md")}
-log:    ${join27(rep.dir, "log.jsonl")}
+${rep.bugs.map((b) => `  - ${b.title}`).join("\n")}${rep.bugs.length ? "\n" : ""}report: ${join28(rep.dir, "report.md")}
+log:    ${join28(rep.dir, "log.jsonl")}
 `);
   return rep.failed ? EXIT.error : EXIT.ok;
 }
@@ -34006,7 +34119,7 @@ function validate2(c, files2) {
   if (files2.length === 0) return c.io.err("usage: proofloop protocol validate <file.yaml...>\n"), EXIT.usage;
   let bad = 0;
   for (const f of files2) {
-    const { diagnostics } = parseProtocol(readFileSync16(resolve2(c.cwd, f), "utf8"), f);
+    const { diagnostics } = parseProtocol(readFileSync17(resolve2(c.cwd, f), "utf8"), f);
     if (diagnostics.length === 0) c.io.out(`ok  ${f}
 `);
     for (const d of diagnostics) {
@@ -34051,7 +34164,7 @@ async function setup(c, root, o) {
     { name: "gh (optional)", ok: gh.code === 0, detail: gh.spawnError ? "not installed" : gh.code === 0 ? "authenticated" : "not authenticated" }
   ];
   const cfg = configSchema.parse({ github: { enabled: Boolean(repo) && gh.code === 0, ...repo ? { repo } : {} }, commands: {} });
-  const exists2 = existsSync18(configPath(root));
+  const exists2 = existsSync19(configPath(root));
   if (o.yes && !exists2) writeConfig(root, cfg);
   const text2 = `ProofLoop ${ENGINE_VERSION} self-check (read-only)
 ${checks.map((k) => `  ${k.ok ? "ok " : "!! "} ${k.name}: ${k.detail}`).join("\n")}
@@ -34078,8 +34191,8 @@ async function memoryCmd(c, e, cmd2, rest, v, json2) {
     const text2 = format === "json" ? `${JSON.stringify(ledger, null, 2)}
 ` : renderLedgerMarkdown(ledger);
     if (v.out) {
-      mkdirSync13(dirname9(String(v.out)), { recursive: true });
-      writeFileSync12(String(v.out), text2);
+      mkdirSync14(dirname9(String(v.out)), { recursive: true });
+      writeFileSync13(String(v.out), text2);
       c.io.out(`ledger (${format}) written to ${String(v.out)}
 `);
     } else c.io.out(text2);
@@ -34127,7 +34240,7 @@ var io = {
   err: (t) => void process.stderr.write(t),
   stdin: () => {
     try {
-      return readFileSync17(0, "utf8");
+      return readFileSync18(0, "utf8");
     } catch {
       return "";
     }
