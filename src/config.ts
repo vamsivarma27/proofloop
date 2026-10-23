@@ -40,6 +40,8 @@ export const configSchema = z.strictObject({
       wallClockMs: z.number().int().positive().default(4 * 3_600_000),
     })
     .default({ maxParallel: 1, gateTimeoutMs: 600_000, agentTimeoutMs: 1_800_000, maxBudgetUsd: 5, leaseTtlMs: 120_000, wallClockMs: 4 * 3_600_000 }),
+  /** Historical memory (PRD V0.2): what happens when GitHub or local history cannot be read before planning. */
+  memory: z.strictObject({ requireComplete: z.boolean().default(false), retries: z.number().int().min(0).max(5).default(2), maxResults: z.number().int().min(1).max(20).default(5) }).default({ requireComplete: false, retries: 2, maxResults: 5 }),
   retentionDays: z.number().int().positive().default(30),
   environment: z.enum(['local', 'dev', 'staging', 'production']).default('local'),
 });

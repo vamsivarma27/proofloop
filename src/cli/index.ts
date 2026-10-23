@@ -27,6 +27,10 @@ import { evaluateHook, hookOutput } from './hook';
 import { renderPlanMarkdown } from '../plan/schema';
 import { getPlan } from '../plan/workflow';
 import type { Plan } from '../plan/schema';
+import { renderLedgerMarkdown } from '../ledger/ledger';
+import { ledgerFor } from '../engine/ledger-io';
+import { incidentsOf, repositoryIdOf, storedMemory } from '../engine/memory';
+import { memoryForPrompt } from '../memory/retrieve';
 
 export interface Io {
   out(text: string): void;
@@ -51,6 +55,7 @@ Task commands:  feature|bug|diagnose|performance|refactor|security "<request>" �
 Blueprint:      blueprint next-question|answer|defaults|submit|show <id>
 Lifecycle:      status [id] · approve <id> --plan-hash H [--scope S] · reject <id> --comment C · run <id> · resume <id> [--retry] · cancel <id> · pause <id>
 Evidence:       verify · report <id> [--out file] · readiness <id> · plan show <id>
+Memory:         ledger export <id> [--format json|markdown] [--out file] · memory <id> · incident list|show <id>|confirm <id> --text T --yes
 Artifacts:      artifact add|list <id> [name --file f] · perf record|import-k6 <id> --file f
 Evaluation:     eval [task-id-substring...] · eval composer · eval --runtime claude [--max-usd 1] [--total-usd 10] [--model m]  (real model; spends money)
 Setup:          setup [--yes] [--github owner/repo] · protocols · protocol validate <file...>
@@ -84,7 +89,7 @@ export async function runCli(argv: string[], c: CliEnv): Promise<number> {
     args: argv,
     allowPositionals: true,
     strict: false,
-    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' }, runtime: { type: 'string' }, 'max-usd': { type: 'string' }, 'reuse-baseline': { type: 'string' }, 'total-usd': { type: 'string' }, model: { type: 'string' }, meta: { type: 'string' }, topic: { type: 'string' }, text: { type: 'string' } },
+    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' }, runtime: { type: 'string' }, 'max-usd': { type: 'string' }, 'reuse-baseline': { type: 'string' }, 'total-usd': { type: 'string' }, model: { type: 'string' }, meta: { type: 'string' }, format: { type: 'string' }, topic: { type: 'string' }, text: { type: 'string' } },
   });
   const [cmd, ...rest] = positionals;
   const json = values.json === true;
@@ -154,6 +159,10 @@ async function withEngine(c: CliEnv, root: string, cmd: string, rest: string[], 
       show(c, json, { path: dest }, `${md}\nwritten to ${dest}\n`);
       return EXIT.ok;
     }
+    case 'ledger':
+    case 'memory':
+    case 'incident':
+      return memoryCmd(c, e, cmd, rest, v, json);
     case 'plan':
       return planCmd(c, e, rest, v, json);
     case 'artifact':
@@ -398,4 +407,45 @@ async function setup(c: CliEnv, root: string, o: { yes: boolean; github?: string
   const text = `ProofLoop ${ENGINE_VERSION} self-check (read-only)\n${checks.map((k) => `  ${k.ok ? 'ok ' : '!! '} ${k.name}: ${k.detail}`).join('\n')}\n\nDetected: ${detected.languages.join(', ') || 'nothing recognised'}${detected.packageManager ? ` (${detected.packageManager})` : ''}\n  commands: ${JSON.stringify(detected.commands)}\n${detected.limitations.map((l) => `  limitation: ${l}\n`).join('')}\nPermissions ProofLoop needs and why: read the repo; create branches/worktrees under .proofloop/; run only the gate commands you approve in a plan; write issues/PRs through your own gh login (no token is stored). It never disables Claude Code permissions.\n${exists ? `Config exists: ${configPath(root)}\n` : o.yes ? `Wrote ${configPath(root)}\n` : `Would write ${configPath(root)} with GitHub ${cfg.github.enabled ? `enabled (${repo})` : 'disabled'}. Re-run with --yes to create it.\n`}`;
   show(c, o.json, { checks, detected, config: cfg }, text);
   return checks.slice(0, 3).every((k) => k.ok) ? EXIT.ok : EXIT.error;
+}
+
+async function memoryCmd(c: CliEnv, e: Eng, cmd: string, rest: string[], v: Record<string, string | boolean | undefined>, json: boolean): Promise<number> {
+  const [sub, id] = cmd === 'ledger' ? rest : cmd === 'memory' ? ['show', rest[0]] : rest;
+  if (cmd === 'ledger') {
+    if (sub !== 'export' || !id) return (c.io.err('usage: proofloop ledger export <task-id> [--format json|markdown] [--out file]\n'), EXIT.usage);
+    const format = String(v.format ?? 'json');
+    if (format !== 'json' && format !== 'markdown') return (c.io.err('--format must be json or markdown\n'), EXIT.usage);
+    const ledger = await ledgerFor(e.d, id);
+    const text = format === 'json' ? `${JSON.stringify(ledger, null, 2)}\n` : renderLedgerMarkdown(ledger);
+    if (v.out) {
+      mkdirSync(dirname(String(v.out)), { recursive: true });
+      writeFileSync(String(v.out), text);
+      c.io.out(`ledger (${format}) written to ${String(v.out)}\n`);
+    } else c.io.out(text);
+    return EXIT.ok;
+  }
+  if (cmd === 'memory') {
+    const m = id ? storedMemory(e.d, id) : null;
+    if (!m) return (c.io.err(`no historical memory recorded for ${id ?? '(no id)'}\n`), EXIT.error);
+    show(c, json, m, `${memoryForPrompt(m)}\n`);
+    return EXIT.ok;
+  }
+  const repo = incidentsOf(e.d);
+  if (sub === 'list') {
+    const list = repo.list(await repositoryIdOf(e.d));
+    show(c, json, list, `${list.map((i) => `${i.id}  ${i.status}  ${i.title}`).join('\n') || 'no incidents recorded'}\n`);
+    return EXIT.ok;
+  }
+  const inc = id ? repo.get(id) : null;
+  if (!inc) return (c.io.err(`unknown incident ${id ?? '(no id)'}\n`), EXIT.error);
+  if (sub === 'confirm') {
+    if (c.env.PROOFLOOP_AGENT_SESSION === '1') throw new PlError('PL_APPROVAL_001', 'refused: agent sessions cannot confirm a root cause; a human must run this');
+    if (!v.text) return (c.io.err('usage: proofloop incident confirm <id> --text "<root cause>" --yes\n'), EXIT.usage);
+    if (!confirmed(c, `Record "${String(v.text)}" as the confirmed root cause of ${inc.id}?`, v.yes === true)) throw new PlError('PL_APPROVAL_002', 'confirming a root cause needs an interactive confirmation or --yes');
+    repo.confirmRootCause(inc.id, String(v.text), humanActor());
+    c.io.out(`root cause recorded for ${inc.id} by a human decision\n`);
+    return EXIT.ok;
+  }
+  show(c, json, inc, `${inc.id} [${inc.status}] ${inc.title}\nconfirmed root cause: ${inc.confirmedRootCause ?? 'none'}\nhypotheses: ${inc.rootCauseHypotheses.map((h) => `[${h.status}] ${h.description}`).join('; ') || 'none'}\nattempts: ${inc.attemptedFixes.map((a) => `${a.id}:${a.outcome}`).join(', ') || 'none'}\nregression tests: ${inc.regressionTests.map((t) => t.name).join(', ') || 'none'}\n`);
+  return EXIT.ok;
 }
