@@ -5,4 +5,4 @@ argument-hint: "<run-id>"
 disable-model-invocation: true
 ---
 
-First run `proofloop approve $ARGUMENTS` (no hash) to display the current plan and its hash. Ask the user to confirm they reviewed it. Only after the user explicitly says to approve, run `proofloop approve $ARGUMENTS --plan-hash <hash> --yes`. The tool-permission prompt is the human confirmation; never skip it. Then tell the user to run `proofloop run <run-id>` (in the background) to start execution.
+Run `proofloop approve $ARGUMENTS` (no hash) to display the plan and its hash, and show the user the plan in full. If the user already told you to approve this run, run `proofloop approve $ARGUMENTS --plan-hash <hash> --yes` right away; the tool-permission prompt is the one human confirmation, so do not ask again in chat. Otherwise stop after showing the plan and let them decide. Then tell the user to run `proofloop run <run-id>` (in the background) to start execution.
