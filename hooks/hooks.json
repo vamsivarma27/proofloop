@@ -1,5 +1,5 @@
 {
-  "description": "ProofLoop guard: agents cannot change approvals or state; protected paths and critical shell commands are policy-checked.",
+  "description": "ProofLoop guard: agents cannot change approvals or state; protected paths and critical shell commands are policy-checked. A bare \"test\" prompt starts the ProofLoop testing protocol.",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,9 +8,27 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/bin/proofloop",
-            "args": ["hook", "pre-tool-use"],
+            "args": [
+              "hook",
+              "pre-tool-use"
+            ],
             "timeout": 15,
             "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/proofloop",
+            "args": [
+              "hook",
+              "user-prompt"
+            ],
+            "timeout": 10
           }
         ]
       }

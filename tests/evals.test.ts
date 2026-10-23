@@ -71,3 +71,26 @@ describe('real-model mode wiring (no model is called here)', () => {
     expect(none.proofloop).toEqual([]);
   });
 });
+
+describe('test suites (proofloop test)', () => {
+  it('runs one named suite end to end, writes log and report, and finds no bugs in a healthy suite', async () => {
+    const { runSuites } = await import('../src/evals/suites');
+    const { mkdtempSync, readFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const root = mkdtempSync(join(tmpdir(), 'pl-suite-'));
+    const rep = await runSuites({ root, suites: ['blocked'] });
+    expect(rep.outcomes.length).toBe(2);
+    expect(rep.failed).toBe(0);
+    expect(readFileSync(join(rep.dir, 'log.jsonl'), 'utf8')).toContain('task.end');
+    expect(readFileSync(join(rep.dir, 'report.md'), 'utf8')).toContain('None found.');
+  });
+
+  it('rejects unknown suites and turns a wrong outcome into a bug that can be filed once', async () => {
+    const { runSuites, bugsOf } = await import('../src/evals/suites');
+    type TaskOutcome = import('../src/evals/types').TaskOutcome;
+    await expect(runSuites({ root: '/nonexistent', suites: ['nope'] })).rejects.toThrow(/unknown suite/);
+    const bad = { id: 't', category: 'bug', mode: 'proofloop', expected: 'verified', finalState: 'BLOCKED', delivered: false, accepted: false, regressed: false, correct: false, falseDelivery: false, repairs: 1, firstPass: false, safetyIncidents: 1, evidenceProblems: 0, recovered: null, integrationConflicts: 0, elapsedMs: 1, notes: ['x'] } satisfies TaskOutcome;
+    expect(bugsOf({ ...bad }).map((b) => b.key)).toEqual(['test:t:wrong outcome', 'test:t:safety incident']);
+  });
+});

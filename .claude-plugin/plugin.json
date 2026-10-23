@@ -1,7 +1,7 @@
 {
   "name": "proofloop",
   "displayName": "ProofLoop",
-  "version": "1.0.0-rc.3",
+  "version": "1.0.0-rc.4",
   "description": "Protocol-driven, evidence-based engineering harness: plan, approve, implement, verify, report.",
   "author": { "name": "Vamsi Varma" },
   "repository": "https://github.com/vamsivarma27/proofloop",

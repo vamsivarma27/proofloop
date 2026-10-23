@@ -71,3 +71,23 @@ export function hookOutput(d: HookDecision): string {
   if (d.decision === 'allow') return '';
   return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: d.decision, permissionDecisionReason: d.reason } });
 }
+
+const FILLER = new Set(['please', 'proofloop', 'run', 'the', 'and', 'only', 'suite', 'suites', 'test', 'tests', 'testing', 'every', 'everything', 'all']);
+const SUITE_NAMES = ['feature', 'bug', 'integration', 'browser', 'performance', 'recovery', 'blocked'];
+
+/** A prompt that is only "test", "run all tests", "test bug and recovery"... returns the suites asked for ([] = ask or all); anything else is not a test request. */
+export function testRequest(prompt: string): string[] | null {
+  const words = prompt.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
+  if (!words.some((w) => w.startsWith('test'))) return null;
+  const suites = words.filter((w) => SUITE_NAMES.includes(w));
+  return words.every((w) => FILLER.has(w) || SUITE_NAMES.includes(w)) ? suites : null;
+}
+
+/** UserPromptSubmit: not a security control, so it fails open and only adds context. */
+export function promptHookOutput(prompt: string): string {
+  const suites = testRequest(prompt);
+  if (!suites) return '';
+  const which = suites.length ? `the ${suites.join(', ')} suite(s)` : 'all suites if the user said all/everything, otherwise ask which suites';
+  const additionalContext = `The user asked to run the ProofLoop testing protocol. Follow the /proofloop:test skill now: run \`proofloop test\` for ${which} (end to end through the real engine), then report the table, every bug, and the report.md and log.jsonl paths exactly as printed.`;
+  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext } });
+}
