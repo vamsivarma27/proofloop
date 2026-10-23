@@ -24,6 +24,7 @@ export async function githubPortContract(make: () => GithubPort, a: Assert): Pro
   a.ok(link === 'linked' || link === 'unsupported', 'linkSubIssue returns linked|unsupported');
   const block = await port.blockedBy(other, one);
   a.ok(block === 'linked' || block === 'unsupported', 'blockedBy returns linked|unsupported');
+  if (port.searchHistory) a.ok(Array.isArray(await port.searchHistory('contract issue', 5)), 'searchHistory returns an array (and throws, never returns [], when GitHub is unreachable)');
 }
 
 /** A runtime must report failures as ok:false (never throw) and must not leak raw secrets in text. */

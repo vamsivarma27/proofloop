@@ -71,7 +71,9 @@ describe('adapter contract suite runs against the built-in adapters (CI gate)', 
       const a = args.join(' ');
       if (a === 'api user --jq .login') return ok('me');
       if (args[3] === 'search/issues') {
-        const key = /proofloop:key=([^"]+)"/.exec(args.find((x) => x.startsWith('q='))!)![1]!;
+        const m = /proofloop:key=([^"]+)"/.exec(args.find((x) => x.startsWith('q='))!);
+        if (!m) return ok(''); // a plain history search: nothing matches
+        const key = m[1]!;
         return ok(issues.filter((i) => i.body.includes(`key=${key} `)).map((i) => JSON.stringify([i.n, `N${i.n}`, `u${i.n}`, i.body])).join('\n'));
       }
       if (args[1] === 'repos/o/r/issues') { const n = issues.length + 1; issues.push({ n, body: args.find((x) => x.startsWith('body='))! }); return ok(JSON.stringify([n, `N${n}`, `https://x/${n}`])); }

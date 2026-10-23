@@ -1,7 +1,9 @@
 import type { TaskRun } from '../state/store';
 import { commitType, type EngineDeps } from './deps';
 import { renderReport, verifyEvidenceIntegrity } from './report';
+import { ledgerFor, publishLedger } from './ledger-io';
 import { block } from './steps-plan';
+import { renderLedgerSummary } from '../ledger/ledger';
 
 const LOCAL_PREFIX = 'local-branch:';
 export const isLocalDelivery = (url: string | null): boolean => Boolean(url?.startsWith(LOCAL_PREFIX));
@@ -38,11 +40,12 @@ export async function stepDeliver(d: EngineDeps, runId: string): Promise<Deliver
   try {
     await d.git.run(run.worktreePath!, ['push', '-u', 'origin', run.activeBranch!], { timeoutMs: 120_000 });
     const base = await d.git.defaultBranch(d.root);
-    const url = await d.port.openPullRequest({ head: run.activeBranch!, base, title: prTitle(d, run), body: renderReport(d.store, runId, { forPr: true }), cwd: run.worktreePath! });
+    const url = await d.port.openPullRequest({ head: run.activeBranch!, base, title: prTitle(d, run), body: `${renderReport(d.store, runId, { forPr: true })}\n${renderLedgerSummary(await ledgerFor(d, runId))}\n`, cwd: run.worktreePath! });
     d.store.setFields(runId, { prUrl: url });
     d.store.transition(runId, 'PR_OPEN', { actor: 'engine' });
     d.store.finishStep(step.id, { state: 'DONE', outputRef: url });
     await d.github.checkpoint(runId, `delivered-${run.headSha?.slice(0, 8)}`, `Pull request opened: ${url}`);
+    await publishLedger(d, runId, 'delivered');
     return 'delivered';
   } catch (e) {
     d.store.finishStep(step.id, { state: 'FAILED', errorCategory: 'github' });
@@ -66,6 +69,7 @@ export async function stepPullRequest(d: EngineDeps, runId: string): Promise<PrO
   const pr = await d.port!.getPullRequest(run.prUrl!);
   if (pr.state === 'MERGED') {
     d.store.transition(runId, 'COMPLETE', { actor: 'engine', reason: 'pull request merged' });
+    await publishLedger(d, runId, 'complete');
     return 'complete';
   }
   if (pr.state === 'CLOSED') {

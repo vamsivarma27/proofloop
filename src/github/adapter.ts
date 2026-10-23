@@ -13,6 +13,15 @@ export interface IssueRef {
   url: string;
 }
 
+export interface HistoryHit {
+  number: number;
+  title: string;
+  body: string;
+  state: string;
+  url: string;
+  isPullRequest: boolean;
+}
+
 export interface Preflight {
   ok: boolean;
   repo: string | null;
@@ -28,6 +37,8 @@ export interface GithubPort {
   blockedBy(issue: IssueRef, blocker: IssueRef): Promise<'linked' | 'unsupported'>;
   openPullRequest(input: { head: string; base: string; title: string; body: string; cwd: string }): Promise<string>;
   getIssue(number: number): Promise<{ number: number; title: string; body: string; state: string }>;
+  /** Optional: issues and pull requests in this repository matching the terms (historical memory). */
+  searchHistory?(terms: string, limit: number): Promise<HistoryHit[]>;
   getPullRequest(url: string): Promise<{ state: 'OPEN' | 'MERGED' | 'CLOSED'; checks: 'success' | 'failure' | 'pending' | 'none' }>;
 }
 
@@ -132,6 +143,15 @@ export class GhAdapter implements GithubPort {
     const bad = rollup.some((c) => ['FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED'].includes(c.conclusion ?? ''));
     const pending = rollup.some((c) => c.status !== undefined && c.status !== 'COMPLETED');
     return { state: j.state, checks: rollup.length === 0 ? 'none' : bad ? 'failure' : pending ? 'pending' : 'success' };
+  }
+
+  async searchHistory(terms: string, limit: number): Promise<HistoryHit[]> {
+    const q = `repo:${this.repo} ${terms.replace(/[^\w\s-]/g, ' ')} sort:updated-desc`;
+    const out = await this.gh(['api', '-X', 'GET', 'search/issues', '-f', `q=${q}`, '-f', `per_page=${Math.min(limit, 30)}`, '--jq', '.items[] | [.number,.title,(.body // "")[0:600],.state,.html_url,(.pull_request != null)] | @json']);
+    return out.split('\n').filter(Boolean).map((l) => {
+      const [number, title, body, state, url, isPullRequest] = JSON.parse(l) as [number, string, string, string, string, boolean];
+      return { number, title, body: redact(body), state, url, isPullRequest };
+    });
   }
 
   async getIssue(number: number): Promise<{ number: number; title: string; body: string; state: string }> {

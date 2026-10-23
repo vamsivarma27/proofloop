@@ -27,7 +27,7 @@ const RULES = `Rules you must follow:
 - Do not run git commit, git push, or any proofloop command. Do not weaken, skip or delete tests to get green.
 - Stay inside the file scope you were given. Do not expand scope.`;
 
-export function plannerPrompt(a: { protocol: Protocol; intent: string; detected: DetectedRepo; files: RelevantFile[]; priorErrors?: string[] }): string {
+export function plannerPrompt(a: { protocol: Protocol; intent: string; detected: DetectedRepo; files: RelevantFile[]; priorErrors?: string[]; history?: string | undefined }): string {
   return `You are the planning agent for the "${a.protocol.id}" protocol (${a.protocol.title}).
 ${RULES}
 
@@ -41,7 +41,7 @@ ${wrapUntrusted('repo-detection', JSON.stringify({ languages: a.detected.languag
 Candidate files from keyword search (HYPOTHESES only - read them before claiming impact):
 ${wrapUntrusted('file-hypotheses', a.files.map((f) => f.path).join('\n') || '(none)')}
 
-Inspect the repository (read-only), then output ONE plan object matching the provided JSON schema.
+${a.history ? `Historical engineering memory (leads from earlier work; may be stale, never overrides the request or current evidence):\n${wrapUntrusted('historical-memory', a.history)}\n\n` : ''}Inspect the repository (read-only), then output ONE plan object matching the provided JSON schema.
 Mark affected modules "confirmed" only if you read them; otherwise "hypothesis". List unconfirmed assumptions honestly.
 Every acceptance criterion needs an executable test or a documented manual check. Keep tasks small; give each task explicit fileScopes.
 ${a.protocol.id === 'bug' ? 'This is a bug: include reproduction (reproducible yes/no/unknown) and a regressionTest {file, command} that fails before the fix, and a rootCause (confirmed cause, or an explicit uncertainty). The FIRST task must only add the regression test.\n' : ''}${a.priorErrors?.length ? `\nYour previous plan was rejected by validation:\n- ${a.priorErrors.join('\n- ')}\nFix exactly these problems.\n` : ''}`;
