@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 1.0.0-rc.5
+- `proofloop test` is now the full project test (the `test` protocol): lint, typecheck, unit/regression suite, build, integration, Playwright browser journeys once per persona (ordinary, impatient, unauthorized, accessibility), security scan and migration on the current commit, compared gate by gate with the merge base in a detached worktree (regression / pre-existing / fixed). Writes `.proofloop/test-runs/<time>/report.{md,json}` plus gate logs and evidence; failures become bugs (optionally GitHub issues via `--file-bugs`); a missing check is a coverage gap, never a pass. `/proofloop:test` and a bare "test" prompt run it without asking which suites.
+- The earlier scripted self-suites moved to `proofloop selftest`.
+
 ## 1.0.0-rc.4
 - `/proofloop:test` and `proofloop test [suite...|all]`: end-to-end suites (feature, bug, integration, browser, performance, recovery, blocked) through the real engine; writes `.proofloop/test-runs/<time>/log.jsonl`, `report.md`, `report.json`; wrong outcomes, safety and evidence problems become bugs, optionally filed as GitHub issues with `--file-bugs owner/repo` (idempotent). Typing just "test" / "run all tests" / "test bug and recovery" starts it via a UserPromptSubmit hook.
 
