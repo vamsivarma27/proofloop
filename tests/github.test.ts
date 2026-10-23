@@ -165,3 +165,17 @@ describe('GithubSync (durable, honest about outages)', () => {
     expect(await new GithubSync(store, port).ensureParent(run.id, 't', 'b')).toMatchObject({ status: 'synced' });
   });
 });
+
+describe('GhAdapter.searchHistory', () => {
+  it('maps search results to history hits, redacts bodies, and surfaces gh failures', async () => {
+    const lines = [JSON.stringify([7, 'Search times out', `body with ${FAKE_GH_TOKEN}`, 'closed', 'https://github.com/o/r/issues/7', false]), JSON.stringify([8, 'Fix search timeout', 'pr body', 'closed', 'https://github.com/o/r/pull/8', true])];
+    let seen: string[] = [];
+    const exec: Exec = async (_c, args) => ((seen = [...args]), ok(lines.join('\n')));
+    const hits = await new GhAdapter('o/r', exec).searchHistory('search timeout', 10);
+    expect(hits.map((h) => [h.number, h.isPullRequest])).toEqual([[7, false], [8, true]]);
+    expect(JSON.stringify(hits)).not.toContain(FAKE_GH_TOKEN);
+    expect(seen.find((a) => a.startsWith('q='))).toContain('repo:o/r search timeout');
+    const down: Exec = async () => err('HTTP 403: API rate limit exceeded');
+    await expect(new GhAdapter('o/r', down).searchHistory('x', 5)).rejects.toThrow(/rate limit/);
+  });
+});

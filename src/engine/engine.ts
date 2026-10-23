@@ -14,6 +14,7 @@ import { recordAnswer } from '../blueprint/interview';
 import { getBlueprint } from '../blueprint/workflow';
 import { runTasks } from './scheduler';
 import { stepDeliver, stepPullRequest } from './steps-deliver';
+import { stepMemory, syncIncident } from './memory';
 import { block, excludeStateDir, stepPlan, stepReady, stepRecon } from './steps-plan';
 import { stepRepair, stepReview, stepVerify } from './steps-verify';
 
@@ -79,6 +80,7 @@ export class Engine {
       const stop = this.guards(runId);
       if (stop) return stop;
       d.store.heartbeat(runId);
+      syncIncident(d, runId);
       const run = d.store.getRun(runId);
       if (!['AWAITING_APPROVAL', 'BLOCKED', 'PAUSED', 'COMPLETE', 'CANCELLED', 'PR_OPEN'].includes(run.state)) {
         const over = await this.overBudget(runId);
@@ -104,6 +106,9 @@ export class Engine {
       case 'DISCOVERING':
         if (this.isIdea(run)) return stop('human', 'interview in progress: `proofloop blueprint next-question`, then `blueprint submit`');
         stepRecon(d, id);
+        return null;
+      case 'RETRIEVING_MEMORY':
+        await stepMemory(d, id);
         return null;
       case 'PLANNING':
         if (this.isIdea(run)) return stop('human', 'waiting for a blueprint: `proofloop blueprint submit`');

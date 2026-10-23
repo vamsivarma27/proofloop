@@ -43,6 +43,8 @@ describe ─► plan + acceptance criteria ─► YOU approve the plan hash ─�
 | **Scope stays in scope** | Out-of-scope edits are reverted; risky commands need scoped approval. |
 | **Crashes don't cost you the run** | Interrupted runs reconcile with Git and resume instead of restarting. |
 | **A report that says what is *not* proven** | Limits and blocked items are listed, not hidden. |
+| **It remembers** | Bugs become append-only incident records; the next similar task retrieves them, with why they matched and whether they may be stale. |
+| **One document per change** | `proofloop ledger export <run>` produces a JSON or Markdown Proof Ledger: criteria, attempts (failed ones included), and the exact commit each check ran on. |
 
 The rules are enforced in code (a state machine, a command policy, a PreToolUse hook), not in prompts an agent can talk its way around.
 

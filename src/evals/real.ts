@@ -47,12 +47,25 @@ async function realProofLoop(task: EvalTask, runtime: AgentRuntime, maxUsd: numb
   }
 }
 
+/** Background `git gc`/maintenance can touch .git while it is copied (seen as an intermittent ENOENT on macOS CI), so retry. */
+function copyRepo(from: string, to: string): void {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      cpSync(from, to, { recursive: true, dereference: false });
+      return;
+    } catch (e) {
+      if (attempt >= 3) throw e;
+      rmSync(to, { recursive: true, force: true });
+    }
+  }
+}
+
 /** Same model, no harness: one `claude -p` pass in a copy of the repository, then the hidden checks. */
 async function realBaseline(task: EvalTask, runtime: AgentRuntime, maxUsd: number): Promise<{ outcome: TaskOutcome; cost: number }> {
   const t0 = Date.now();
   const root = await prepare(task);
   const dir = `${root}-baseline`;
-  cpSync(root, dir, { recursive: true, dereference: false });
+  copyRepo(root, dir);
   const c = (typeof task.config === 'function' ? {} : (task.config ?? {})) as { commands?: Record<string, string> };
   const tools = [...ROLE_TOOLS.implementer, ...Object.values(c.commands ?? {}).map((x) => `Bash(${x})`)];
   const res = await runtime.run({ role: 'implementer', runId: 'baseline', cwd: dir, allowedTools: tools, maxBudgetUsd: maxUsd, timeoutMs: 900_000, prompt: `${task.intent}. ${hint(task)} Make the change and run the checks. When done, say so.` });

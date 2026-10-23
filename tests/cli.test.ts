@@ -166,6 +166,16 @@ describe('PreToolUse guard (deterministic)', () => {
     expect(bash('pnpm test', agent).decision).toBe('allow');
   });
 
+  it('judges the command that is run, not words in a grep pattern or path (false prompt reported by a user)', () => {
+    const grep = 'cd ~/.claude/plugins/cache/proofloop/proofloop/1.0.0-rc.2 && grep -rn "harnessApproved\\|approvedHarness" src';
+    expect(bash(grep, {}).decision).toBe('allow');
+    expect(bash(grep, agent).decision).toBe('allow');
+    expect(bash('proofloop approve run_1', {}).decision).toBe('ask');
+    expect(bash('cd x && proofloop approve run_1', agent).decision).toBe('deny');
+    expect(bash('bash -c "proofloop approve run_1"', agent).decision).toBe('deny');
+    expect(bash('FOO=1 ./bin/proofloop --json reject run_1', agent).decision).toBe('deny');
+  });
+
   it('denies writes to protected paths and reads of secrets, allows normal edits', () => {
     const cwd = tmp();
     const w = (file_path: string, tool_name = 'Write') => evaluateHook({ tool_name, tool_input: { file_path }, cwd }, {});
