@@ -1,7 +1,9 @@
 # Changelog
 
 
-## Unreleased
+## 1.0.0-rc.3
+- Fix: the guard hook asked for approval on any command that merely mentioned `approve` near a path containing `proofloop` (e.g. a grep in the plugin cache). It now judges the command actually run.
+- Plans open with an at-a-glance table and end with next steps; `/proofloop:approve` asks once.
 - V0.2 engineering memory: `RETRIEVING_MEMORY` workflow state, append-only incident records (hypotheses vs evidence-confirmed root causes, preserved failed attempts), explainable historical retrieval over local incidents, GitHub issues/PRs and decision records with partial-failure reporting, and an exportable Proof Ledger (`proofloop ledger export`, JSON and Markdown) with revision-specific, stale-aware verification. See docs/guides/memory-and-ledger.md.
 - Real-model eval keeps the directory of any failed run and names it in the report notes, so unexplained failures can be diagnosed.
 - Claude Code marketplace manifest (`/plugin marketplace add vamsivarma27/proofloop`), scoped npm package `@vamsiivarmaa/proofloop` (publish tag `next`), new README with hero figure.

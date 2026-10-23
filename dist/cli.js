@@ -28836,7 +28836,7 @@ import { dirname, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/version.ts
-var ENGINE_VERSION = "1.0.0-rc.2";
+var ENGINE_VERSION = "1.0.0-rc.3";
 
 // src/protocol/registry.ts
 init_schema();
