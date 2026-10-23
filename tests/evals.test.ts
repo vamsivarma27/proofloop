@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ScriptedRuntime } from '../src/agent/runtime';
 import { REAL_ELIGIBLE, renderRealMarkdown, runRealEvals } from '../src/evals/real';
@@ -32,6 +33,15 @@ describe('schemas passed to the Claude CLI', () => {
 });
 
 describe('real-model mode wiring (no model is called here)', () => {
+  it('keeps the directory of a failed run and names it in the notes', async () => {
+    const task = ALL_TASKS.find((t) => t.id === 'feature-1-single-file')!;
+    const rt = new ScriptedRuntime(async (req) => (req.role === 'planner' ? { structured: task.plan } : req.role === 'implementer' ? { text: 'did nothing', costUsd: 0.1 } : { structured: { verdict: 'approve', findings: [], unsupportedClaims: [] }, costUsd: 0.01 }));
+    const rep = await runRealEvals({ only: ['feature-1'], perTaskUsd: 1, totalUsd: 5, runtime: rt });
+    const kept = rep.baseline[0]!.notes.find((n) => n.startsWith('kept for diagnosis: '))!;
+    expect(kept).toBeDefined();
+    expect(existsSync(kept.replace('kept for diagnosis: ', ''))).toBe(true);
+  });
+
   it('only offers tasks that need no scripted crash, recorder, browser or destructive setup', () => {
     const ids = ALL_TASKS.filter(REAL_ELIGIBLE).map((t) => t.id);
     expect(ids).toContain('feature-1-single-file');

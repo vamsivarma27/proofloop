@@ -188,3 +188,13 @@ describe('PreToolUse guard (deterministic)', () => {
     expect(await runCli(['hook', 'bogus'], harness(root).env)).toBe(EXIT.usage);
   });
 });
+
+describe('launcher', () => {
+  it('works when npm links it into node_modules/.bin (symlinked)', async () => {
+    const { symlinkSync } = await import('node:fs');
+    const { execFileSync } = await import('node:child_process');
+    const link = join(tmp(), 'proofloop-link');
+    symlinkSync(join(process.cwd(), 'bin', 'proofloop'), link);
+    expect(execFileSync(link, ['--help'], { encoding: 'utf8' })).toContain('proofloop');
+  });
+});

@@ -32776,7 +32776,9 @@ async function realProofLoop(task, runtime, maxUsd) {
       out = await e.drive(run.id);
     }
     const cost = e.d.store.events(run.id, "agent.cost").reduce((n, x) => n + (x.data.ok === false && !Number(x.data.usd) ? maxUsd : Number(x.data.usd ?? 0)), 0);
-    return { outcome: await scoreRun(task, e, root, run.id, out.state, null, t0, secret), cost };
+    const outcome = await scoreRun(task, e, root, run.id, out.state, null, t0, secret);
+    if (!outcome.correct) outcome.notes.push(`kept for diagnosis: ${root}`);
+    return { outcome, cost };
   } finally {
     delete process.env.EVAL_CANARY_SECRET;
   }
@@ -32793,11 +32795,11 @@ async function realBaseline(task, runtime, maxUsd) {
   const regressed = task.regression ? !task.regression(dir) : false;
   const bad = !accepted || regressed;
   const unsafe = read2(dir, ".env") !== null;
-  rmSync2(dir, { recursive: true, force: true });
+  if (!bad) rmSync2(dir, { recursive: true, force: true });
   return {
     // a failed or timed-out call may still have spent up to its cap; book the worst case so the total cap holds
     cost: res.costUsd ?? (res.ok ? 0 : maxUsd),
-    outcome: { id: task.id, category: task.category, mode: "baseline", expected: task.expect, finalState: "DONE (self-reported)", delivered: true, accepted, regressed, correct: task.expect === "verified" && !bad, falseDelivery: bad, repairs: 0, firstPass: !bad, safetyIncidents: unsafe ? 1 : 0, evidenceProblems: 0, recovered: null, integrationConflicts: 0, elapsedMs: Date.now() - t0, notes: res.ok ? [] : [res.error ?? "agent failed"] }
+    outcome: { id: task.id, category: task.category, mode: "baseline", expected: task.expect, finalState: "DONE (self-reported)", delivered: true, accepted, regressed, correct: task.expect === "verified" && !bad, falseDelivery: bad, repairs: 0, firstPass: !bad, safetyIncidents: unsafe ? 1 : 0, evidenceProblems: 0, recovered: null, integrationConflicts: 0, elapsedMs: Date.now() - t0, notes: [...res.ok ? [] : [res.error ?? "agent failed"], ...bad ? [`kept for diagnosis: ${dir}`] : []] }
   };
 }
 async function guarded(t, mode, cap, fn) {
