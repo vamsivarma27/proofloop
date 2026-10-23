@@ -1,8 +1,7 @@
 {
-  "name": "proofloop",
+  "name": "@vamsivarma27/proofloop",
   "version": "1.0.0-rc.2",
   "description": "Protocol-driven, evidence-based engineering harness and Claude Code plugin",
-  "private": true,
   "license": "Apache-2.0",
   "type": "module",
   "packageManager": "pnpm@10.11.0",
@@ -18,7 +17,8 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "test:cov": "vitest run --coverage",
-    "check": "pnpm typecheck && pnpm lint && pnpm test:cov && pnpm build"
+    "check": "pnpm typecheck && pnpm lint && pnpm test:cov && pnpm build",
+    "prepack": "node scripts/build.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
@@ -34,5 +34,39 @@
   "dependencies": {
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vamsivarma27/proofloop.git"
+  },
+  "homepage": "https://github.com/vamsivarma27/proofloop#readme",
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "agent",
+    "harness",
+    "verification",
+    "evidence",
+    "ai-coding"
+  ],
+  "files": [
+    "dist",
+    "bin",
+    "skills",
+    "agents",
+    "hooks",
+    "protocols",
+    "templates",
+    "examples",
+    ".claude-plugin",
+    "docs/assets/hero.gif",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "SECURITY.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "tag": "next"
   }
 }

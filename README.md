@@ -1,79 +1,110 @@
+<div align="center">
+
+<img src="docs/assets/hero.gif" alt="Five gate plates; the one under the pointer slides clear and the plates above lift away" width="520">
+
 # ProofLoop
 
-A protocol-driven, evidence-based engineering harness for [Claude Code](https://code.claude.com). It does not write code itself. It is the system around the coding agent that makes good engineering behaviour repeatable and checkable:
+**Your coding agent says "done." ProofLoop makes it prove it.**
 
-> Describe the outcome. ProofLoop discovers what matters, asks only necessary questions, prepares a plan for approval, executes within the approved scope, verifies the running software, and reports what is proven, what is not, and what remains blocked.
+A Claude Code plugin that wraps every change in a plan you approve, gates that must pass on the exact commit, and an evidence trail you can audit.
 
-**ProofLoop does not promise bug-free software or unlimited capacity.** It lowers risk, catches defects earlier, makes risk visible, and refuses to present unverified work as complete.
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+![Status](https://img.shields.io/badge/status-1.0.0--rc.2-orange)
+![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.13-339933)
 
-Status: **1.0.0-rc.2, private pre-release.** License: Apache-2.0 (repository is private for now). Platforms: macOS and Linux. Windows is not validated.
+</div>
 
-## How it works
+---
+
+## The problem
+
+Agents are confident. A green summary is not a green build. Typical failures:
+
+- "All tests pass" — the test was quietly weakened.
+- "Bug fixed" — nobody reproduced the bug first.
+- "Done" — the edit touched files nobody asked it to touch.
+- The run dies halfway and you start over, with no record of what was real.
+
+## What ProofLoop does
 
 ```
- you ── /proofloop:feature "…" ──► skills (thin)  ──► proofloop CLI ──► engine
-                                                                          │
-   GitHub issues/PRs  ◄── GithubPort (gh CLI) ◄──────────────────────────┤  durable record
-   SQLite (.proofloop/state.db) ◄── state machine + guards ◄─────────────┤  runtime truth
-   Claude Code (claude -p) ◄── AgentRuntime (planner/implementer/reviewers)┤  roles, least privilege
-   git worktrees ◄── scheduler (leases, scopes, integration) ◄───────────┤  isolation
-   gates: lint/type/test/build/browser/perf/security ──► evidence ledger ─┘  PASS | FAIL | BLOCKED
+describe ─► plan + acceptance criteria ─► YOU approve the plan hash ─► implement in a worktree
+                                                                              │
+         PR with the evidence ◄── review ◄── gates: PASS │ FAIL │ BLOCKED ◄───┘
 ```
 
-The things that matter are **code, not prompts**:
-
-| Rule | Where it is enforced |
+| You get | How |
 |---|---|
-| No implementation before a human approves the exact plan hash | state-machine guard (`src/state/machine.ts`) |
-| Agents cannot approve, change state, or mark anything verified | `human:` actor check in the store, PreToolUse hook, role tool lists |
-| A required gate is `PASS`, `FAIL` or `BLOCKED`; skipped/unavailable is never a pass | gate runner + guard on `REVIEW_REQUIRED` / `PR_OPEN` / `COMPLETE` |
-| Evidence names the exact commit and is checksummed | evidence ledger (append-only triggers) |
-| Tests cannot be weakened to get green | `test-integrity` gate |
-| Destructive/production commands never run without scoped approval | command policy |
-| Repo files, issues, web pages are untrusted data | fencing + capabilities enforced outside the model |
-| Interrupted runs reconcile with Git instead of restarting | `resume` |
+| **No code before you approve** | Approval is bound to the exact plan hash and only a `human:` actor can record it. Agents cannot approve or change state. |
+| **"Verified" means a gate passed on the head commit** | Missing, skipped or stale gates are never a pass. Evidence is checksummed, append-only and HMAC-signed. |
+| **Tests can't be weakened to go green** | A `test-integrity` gate catches deleted, skipped or loosened tests. |
+| **Bugs are reproduced before they are fixed** | The bug protocol demands a failing regression test first, then proof it now passes. |
+| **Scope stays in scope** | Out-of-scope edits are reverted; risky commands need scoped approval. |
+| **Crashes don't cost you the run** | Interrupted runs reconcile with Git and resume instead of restarting. |
+| **A report that says what is *not* proven** | Limits and blocked items are listed, not hidden. |
 
-## Install (from this repo)
+The rules are enforced in code (a state machine, a command policy, a PreToolUse hook), not in prompts an agent can talk its way around.
 
-```bash
-pnpm install && pnpm build
-claude --plugin-dir /path/to/proofloop        # try it in a session
-claude plugin validate /path/to/proofloop      # optional
-```
+## Install
 
-Requirements: Node ≥ 22.13 (≥ 25 to use the optional sandboxed Code Mode), Git, Claude Code ≥ 2.1.259, optionally `gh` (authenticated) for GitHub issues and PRs. The CLI is also usable directly: `bin/proofloop`.
-
-## First run
+**From the Claude Code marketplace** (Claude Code 2.1.275 or later):
 
 ```text
-/proofloop:setup                         # read-only self-check; asks before writing .proofloop/config.json
+/plugin marketplace add vamsivarma27/proofloop
+/plugin install proofloop@proofloop
+```
+
+**Or load it straight from a clone:**
+
+```bash
+git clone https://github.com/vamsivarma27/proofloop && cd proofloop
+claude --plugin-dir "$PWD"
+```
+
+**Or as a CLI** (the plugin's engine, usable on its own):
+
+```bash
+npm i -g @vamsivarma27/proofloop@next
+proofloop --help
+```
+
+Needs Node ≥ 22.13, Git, and optionally an authenticated `gh` for issues and PRs.
+
+## Try it in a new project
+
+```text
+/proofloop:setup                              read-only self-check
 /proofloop:feature Add pagination to the users page
-   → plan with acceptance criteria, impact map, risk and a gate preview
-/proofloop:approve <run-id>              # you review the plan hash; the permission prompt is the confirmation
-proofloop run <run-id>                   # implement in a worktree, verify, review, open a PR
+                                              → plan, acceptance criteria, risk, gate preview
+/proofloop:approve <run-id>                   you review the plan hash
+proofloop run <run-id>                        implement, verify, review, open a PR
 /proofloop:status
 ```
 
-Without GitHub the run ends with a local branch and a clear note; it is never presented as equivalent to a PR.
+Other protocols: `:bug`, `:diagnose`, `:performance`, `:verify`, and `:start-project` (idea → researched blueprint → roadmap issues).
 
-## Commands
+## Honest numbers
 
-| Command | Purpose |
-|---|---|
-| `/proofloop:setup`, `:protocols`, `:status` | environment, protocols, active runs/gates/blockers |
-| `/proofloop:feature`, `:bug`, `:diagnose`, `:performance` | task protocols (`refactor`, `security` via CLI) |
-| `/proofloop:start-project` | Idea-to-Product: interview, cited research, blueprint, roadmap issues |
-| `/proofloop:approve`, `:resume`, `:cancel`, `:verify` | lifecycle and basic verification |
-| `proofloop eval`, `eval composer` | scripted evaluation suite and Code Mode benchmark |
+ProofLoop does not promise bug-free software. What has been measured:
 
-## What is verified, and what is not
+- A 22-task evaluation with a **scripted** agent (it tests the harness, not model quality): the harness delivered 100% of tasks that should ship and stopped on 100% that should not; the no-harness baseline falsely reported done on 32%.
+- A small **real-model** run (10 tasks, one run per arm, $9.47): the harness and the bare model both verified 70%; false delivery 22% vs 30%; the harness was about 4x slower. That is **no demonstrated advantage yet**, and two bug tasks are unexplained. Details in [evals/reports/real-model.md](evals/reports/real-model.md).
+- Cloudflare Code Mode bridge: off by default, tested only against a local mock.
+- Security review so far is AI-only. A human review is still open — see [the threat model](docs/security/threat-model.md).
 
-- Verified by tests in this repo: state machine and guards, policy, gates and evidence, GitHub adapter contract (mocked `gh`), parallel scheduling/integration, interruption recovery, bug/performance/migration/browser rules, blueprint validation, sandbox isolation, the PreToolUse hook.
-- Browser evidence is exercised against a real Chrome through Playwright in the eval suite.
-- The 22-task evaluation suite uses a **scripted agent**, so it measures the harness, not model quality. A small **real-model run** (10 tasks, one run per arm, $9.47) is in [evals/reports/real-model.md](evals/reports/real-model.md): the harness and the bare model both verified 70%; false delivery was 22% vs 30%; the harness was about 4x slower. That is no demonstrated advantage on this set, and two bug tasks are unexplained. See [docs/guides/evals.md](docs/guides/evals.md).
-- The **Cloudflare Code Mode bridge** (off by default, double opt-in because tool results leave the machine) talks to a Worker you deploy via a contract ProofLoop defines. It is tested only against a local mock, not against Cloudflare. See [docs/guides/cloudflare-bridge.md](docs/guides/cloudflare-bridge.md).
-- `gh` flows are tested against a faithful fake and were also exercised live against this repository: idempotent issue creation (re-running created no duplicates), search-based dedupe, sub-issue linking, a checkpoint comment and the pull request. Blocked-by links, PR status polling and push flows are covered by the fake only.
+## Docs
 
-## Documentation
+[Architecture](docs/architecture/overview.md) · [Threat model](docs/security/threat-model.md) · [Protocol authoring](docs/guides/protocol-authoring.md) · [Adapters](docs/guides/adapters.md) · [Troubleshooting](docs/guides/troubleshooting.md) · [Evaluation](docs/guides/evals.md) · [Decisions](docs/decisions/) · [Release status](docs/plans/release-status.md) · [Getting started](GETTING_STARTED.md) · [Contributing](CONTRIBUTING.md)
 
-[Architecture](docs/architecture/overview.md) · [Threat model & permissions](docs/security/threat-model.md) · [Protocol authoring](docs/guides/protocol-authoring.md) · [Adapters & contracts](docs/guides/adapters.md) · [Troubleshooting & recovery](docs/guides/troubleshooting.md) · [Compatibility](docs/guides/compatibility.md) · [Evaluation](docs/guides/evals.md) · [Decisions](docs/decisions/) · [Release status](docs/plans/release-status.md) · [Getting started](GETTING_STARTED.md)
+## Develop
+
+```bash
+pnpm install && pnpm check      # typecheck, lint, tests with coverage, build
+./bin/proofloop eval            # scripted evaluation suite
+```
+
+The hero figure is an interactive [Hairline](https://github.com/lucasmarkes/hairline)-style figure: open [docs/assets/gates-figure.html](docs/assets/gates-figure.html) in a browser and move the pointer over the plates.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).

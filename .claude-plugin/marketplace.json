@@ -1,0 +1,15 @@
+{
+  "name": "proofloop",
+  "owner": { "name": "Vamsi Varma" },
+  "metadata": { "description": "ProofLoop: an evidence-based engineering harness for Claude Code" },
+  "plugins": [
+    {
+      "name": "proofloop",
+      "source": "./",
+      "description": "Plan, approve, implement, verify, report. Nothing is called done without gate evidence on the head commit.",
+      "version": "1.0.0-rc.2",
+      "license": "Apache-2.0",
+      "keywords": ["harness", "verification", "workflow", "evidence"]
+    }
+  ]
+}
