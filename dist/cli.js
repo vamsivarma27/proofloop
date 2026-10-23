@@ -33410,11 +33410,22 @@ async function realProofLoop(task, runtime, maxUsd) {
     delete process.env.EVAL_CANARY_SECRET;
   }
 }
+function copyRepo(from, to) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      cpSync2(from, to, { recursive: true, dereference: false });
+      return;
+    } catch (e) {
+      if (attempt >= 3) throw e;
+      rmSync2(to, { recursive: true, force: true });
+    }
+  }
+}
 async function realBaseline(task, runtime, maxUsd) {
   const t0 = Date.now();
   const root = await prepare(task);
   const dir = `${root}-baseline`;
-  cpSync2(root, dir, { recursive: true, dereference: false });
+  copyRepo(root, dir);
   const c = typeof task.config === "function" ? {} : task.config ?? {};
   const tools = [...ROLE_TOOLS.implementer, ...Object.values(c.commands ?? {}).map((x) => `Bash(${x})`)];
   const res = await runtime.run({ role: "implementer", runId: "baseline", cwd: dir, allowedTools: tools, maxBudgetUsd: maxUsd, timeoutMs: 9e5, prompt: `${task.intent}. ${hint(task)} Make the change and run the checks. When done, say so.` });
