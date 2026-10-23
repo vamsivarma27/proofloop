@@ -3,7 +3,7 @@
 
 ## Unreleased
 - Real-model eval keeps the directory of any failed run and names it in the report notes, so unexplained failures can be diagnosed.
-- Claude Code marketplace manifest (`/plugin marketplace add vamsivarma27/proofloop`), scoped npm package `@vamsivarma27/proofloop` (publish tag `next`), new README with hero figure.
+- Claude Code marketplace manifest (`/plugin marketplace add vamsivarma27/proofloop`), scoped npm package `@vamsiivarmaa/proofloop` (publish tag `next`), new README with hero figure.
 - Fix: `bin/proofloop` failed when npm linked it into `node_modules/.bin` (symlink not resolved); found by installing the packed tarball into a fresh project. Covered by a test.
 - `SequentialToolComposer`: fallback that needs neither the Node 25 sandbox nor Cloudflare. The program is a JSON array of `{tool, args}` steps, never code; the shared `ToolHost` still enforces tool existence, write authorization, input schema, call and time limits.
 ## 1.0.0-rc.2

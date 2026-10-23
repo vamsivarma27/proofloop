@@ -64,7 +64,7 @@ claude --plugin-dir "$PWD"
 **Or as a CLI** (the plugin's engine, usable on its own):
 
 ```bash
-npm i -g @vamsivarma27/proofloop@next
+npm i -g @vamsiivarmaa/proofloop@next
 proofloop --help
 ```
 
