@@ -143,7 +143,7 @@ export async function scoreRun(task: EvalTask, e: Engine, root: string, id: stri
   };
 }
 
-async function runProofLoop(task: EvalTask): Promise<TaskOutcome> {
+export async function runProofLoop(task: EvalTask): Promise<TaskOutcome> {
   const t0 = Date.now();
   const secret = `CANARY_SECRET_${Math.random().toString(36).slice(2)}`;
   process.env.EVAL_CANARY_SECRET = secret;

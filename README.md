@@ -10,7 +10,7 @@ A Claude Code plugin that wraps every change in a plan you approve, gates that m
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/@vamsiivarmaa/proofloop/next)](https://www.npmjs.com/package/@vamsiivarmaa/proofloop)
-![Status](https://img.shields.io/badge/status-1.0.0--rc.3-orange)
+![Status](https://img.shields.io/badge/status-1.0.0--rc.4-orange)
 ![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.13-339933)
 
 </div>
@@ -83,6 +83,8 @@ Needs Node ≥ 22.13, Git, and optionally an authenticated `gh` for issues and P
 proofloop run <run-id>                        implement, verify, review, open a PR
 /proofloop:status
 ```
+
+Type `test` (or `/proofloop:test`, optionally `bug recovery`) to run ProofLoop's own end-to-end suites with a log, report and bug list.
 
 Other protocols: `:bug`, `:diagnose`, `:performance`, `:verify`, and `:start-project` (idea → researched blueprint → roadmap issues).
 

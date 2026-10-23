@@ -1,6 +1,9 @@
 # Changelog
 
 
+## 1.0.0-rc.4
+- `/proofloop:test` and `proofloop test [suite...|all]`: end-to-end suites (feature, bug, integration, browser, performance, recovery, blocked) through the real engine; writes `.proofloop/test-runs/<time>/log.jsonl`, `report.md`, `report.json`; wrong outcomes, safety and evidence problems become bugs, optionally filed as GitHub issues with `--file-bugs owner/repo` (idempotent). Typing just "test" / "run all tests" / "test bug and recovery" starts it via a UserPromptSubmit hook.
+
 ## 1.0.0-rc.3
 - Fix: the guard hook asked for approval on any command that merely mentioned `approve` near a path containing `proofloop` (e.g. a grep in the plugin cache). It now judges the command actually run.
 - Plans open with an at-a-glance table and end with next steps; `/proofloop:approve` asks once.

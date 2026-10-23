@@ -15,6 +15,8 @@ import { type DriveOutcome } from '../engine/engine';
 import { ENGINE_VERSION } from '../version';
 import { runComposerBench } from '../evals/composer-bench';
 import { renderEvalMarkdown, runEvals } from '../evals/runner';
+import { SUITES, runSuites } from '../evals/suites';
+import { GhAdapter } from '../github/adapter';
 import { renderRealMarkdown, runRealEvals } from '../evals/real';
 import { addArtifact } from '../gates/artifacts';
 import { fromK6Summary, sampleCount } from '../perf/report';
@@ -23,7 +25,7 @@ import { renderReadiness } from '../engine/report';
 import { TOPICS, type TopicId, fillDefaults, loadInterview, nextQuestion, recordAnswer } from '../blueprint/interview';
 import { renderBlueprintMarkdown } from '../blueprint/render';
 import { getBlueprint, submitBlueprint } from '../blueprint/workflow';
-import { evaluateHook, hookOutput } from './hook';
+import { evaluateHook, hookOutput, promptHookOutput } from './hook';
 import { renderPlanMarkdown } from '../plan/schema';
 import { getPlan } from '../plan/workflow';
 import type { Plan } from '../plan/schema';
@@ -58,6 +60,7 @@ Evidence:       verify · report <id> [--out file] · readiness <id> · plan sho
 Memory:         ledger export <id> [--format json|markdown] [--out file] · memory <id> · incident list|show <id>|confirm <id> --text T --yes
 Artifacts:      artifact add|list <id> [name --file f] · perf record|import-k6 <id> --file f
 Evaluation:     eval [task-id-substring...] · eval composer · eval --runtime claude [--max-usd 1] [--total-usd 10] [--model m]  (real model; spends money)
+Testing:        test [suite...|all] · test --list · test --file-bugs owner/repo   (end-to-end suites: logs, report, bug list)
 Setup:          setup [--yes] [--github owner/repo] · protocols · protocol validate <file...>
 Options:        --root <dir> · --json
 `;
@@ -97,6 +100,7 @@ export async function runCli(argv: string[], c: CliEnv): Promise<number> {
     if (!cmd || cmd === 'help' || cmd === '--help') return (c.io.out(HELP), EXIT.ok);
     if (cmd === 'hook') return hook(c, rest[0]);
     if (cmd === 'eval') return await evalCmd(c, rest, values as Record<string, string | boolean | undefined>, json, await rootOf(c, values.root as string | undefined));
+    if (cmd === 'test') return await testCmd(c, rest, values as Record<string, string | boolean | undefined>, json, await rootOf(c, values.root as string | undefined));
     if (cmd === 'protocols') return protocols(c, json, await rootOf(c, values.root as string | undefined));
     if (cmd === 'protocol' && rest[0] === 'validate') return validate(c, rest.slice(1));
     const root = await rootOf(c, values.root as string | undefined);
@@ -353,6 +357,15 @@ async function evalCmd(c: CliEnv, rest: string[], v: Record<string, string | boo
   return rep.proofloop.every((r) => r.correct) && rep.summary.proofloop.safetyIncidents === 0 ? EXIT.ok : EXIT.error;
 }
 
+async function testCmd(c: CliEnv, rest: string[], v: Record<string, string | boolean | undefined>, json: boolean, root: string): Promise<number> {
+  if (v.list === true) return (show(c, json, SUITES, `${Object.entries(SUITES).map(([k, d]) => `${k.padEnd(12)} ${d}`).join('\n')}\nall          every suite above\n`), EXIT.ok);
+  const suites = rest.filter((x) => x !== 'all');
+  const slug = typeof v['file-bugs'] === 'string' ? v['file-bugs'] : undefined;
+  const rep = await runSuites({ root, suites, log: (l) => c.io.err(`${l}\n`), ...(slug ? { github: new GhAdapter(slug) } : {}) });
+  show(c, json, rep, `${rep.outcomes.map((o) => `${o.correct ? 'pass' : 'FAIL'}  ${o.category.padEnd(12)} ${o.id.padEnd(42)} ${o.finalState} (${o.elapsedMs} ms)`).join('\n')}\n${rep.passed} passed, ${rep.failed} failed. ${rep.bugs.length} bug(s).\n${rep.bugs.map((b) => `  - ${b.title}`).join('\n')}${rep.bugs.length ? '\n' : ''}report: ${join(rep.dir, 'report.md')}\nlog:    ${join(rep.dir, 'log.jsonl')}\n`);
+  return rep.failed ? EXIT.error : EXIT.ok;
+}
+
 function protocols(c: CliEnv, json: boolean, root: string): number {
   const reg = loadRegistry(root);
   const list = reg.list().map((p) => ({ id: p.id, version: p.version, mode: p.mode, risk: p.defaultRisk, title: p.title }));
@@ -375,7 +388,15 @@ function validate(c: CliEnv, files: string[]): number {
 }
 
 function hook(c: CliEnv, event: string | undefined): number {
-  if (event !== 'pre-tool-use') return (c.io.err('usage: proofloop hook pre-tool-use\n'), EXIT.usage);
+  if (event === 'user-prompt') {
+    try {
+      c.io.out(promptHookOutput(String((JSON.parse(c.io.stdin()) as { prompt?: unknown }).prompt ?? '')));
+    } catch {
+      /* fail open: this hook only adds context */
+    }
+    return 0;
+  }
+  if (event !== 'pre-tool-use') return (c.io.err('usage: proofloop hook pre-tool-use|user-prompt\n'), EXIT.usage);
   let input;
   try {
     input = JSON.parse(c.io.stdin());

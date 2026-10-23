@@ -208,3 +208,32 @@ describe('launcher', () => {
     expect(execFileSync(link, ['--help'], { encoding: 'utf8' })).toContain('proofloop');
   });
 });
+
+describe('proofloop test command', () => {
+  it('lists suites', async () => {
+    const h = harness(tmp());
+    expect(await runCli(['test', '--list'], h.env)).toBe(0);
+    expect(h.text()).toContain('recovery');
+  });
+});
+
+describe('prompt hook: a bare test request starts the testing protocol', () => {
+  it('matches test requests only, and names the suites', async () => {
+    const { testRequest, promptHookOutput } = await import('../src/cli/hook');
+    for (const p of ['test', 'Test!', 'run all tests', 'please run the tests', 'proofloop test everything']) expect(testRequest(p), p).toEqual([]);
+    expect(testRequest('test bug and recovery')).toEqual(['bug', 'recovery']);
+    for (const p of ['test the login page', 'fix the failing test in auth', 'add a feature', '']) expect(testRequest(p), p).toBeNull();
+    expect(JSON.parse(promptHookOutput('test bug')).hookSpecificOutput.additionalContext).toContain('bug suite');
+    expect(promptHookOutput('hello')).toBe('');
+  });
+
+  it('is fail-open on unreadable input and wired in hooks.json', async () => {
+    const h = harness(tmp(), { stdin: 'not json' });
+    expect(await runCli(['hook', 'user-prompt'], h.env)).toBe(0);
+    const ok = harness(tmp(), { stdin: JSON.stringify({ prompt: 'test' }) });
+    expect(await runCli(['hook', 'user-prompt'], ok.env)).toBe(0);
+    expect(ok.text()).toContain('UserPromptSubmit');
+    const hooks = JSON.parse((await import('node:fs')).readFileSync('hooks/hooks.json', 'utf8'));
+    expect(hooks.hooks.UserPromptSubmit[0].hooks[0].args).toEqual(['hook', 'user-prompt']);
+  });
+});

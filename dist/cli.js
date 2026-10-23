@@ -28218,8 +28218,8 @@ import { closeSync, openSync, readFileSync as readFileSync17, readSync } from "n
 
 // src/cli/index.ts
 import { parseArgs } from "node:util";
-import { existsSync as existsSync18, mkdirSync as mkdirSync12, readFileSync as readFileSync16, writeFileSync as writeFileSync11 } from "node:fs";
-import { dirname as dirname9, join as join26, resolve as resolve2 } from "node:path";
+import { existsSync as existsSync18, mkdirSync as mkdirSync13, readFileSync as readFileSync16, writeFileSync as writeFileSync12 } from "node:fs";
+import { dirname as dirname9, join as join27, resolve as resolve2 } from "node:path";
 
 // src/shared/exec.ts
 import { execFile } from "node:child_process";
@@ -28836,7 +28836,7 @@ import { dirname, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/version.ts
-var ENGINE_VERSION = "1.0.0-rc.3";
+var ENGINE_VERSION = "1.0.0-rc.4";
 
 // src/protocol/registry.ts
 init_schema();
@@ -30113,9 +30113,9 @@ async function recordReproduction(d, run, plan, cwd) {
 ${r.stdout}
 ${r.stderr}`);
   const uri = join8(d.root, ".proofloop", "artifacts", run.id, `reproduction-${head.slice(0, 8)}.log`);
-  const { mkdirSync: mkdirSync13, writeFileSync: writeFileSync12 } = await import("node:fs");
-  mkdirSync13(join8(uri, ".."), { recursive: true });
-  writeFileSync12(uri, log);
+  const { mkdirSync: mkdirSync14, writeFileSync: writeFileSync13 } = await import("node:fs");
+  mkdirSync14(join8(uri, ".."), { recursive: true });
+  writeFileSync13(uri, log);
   d.store.addEvidence({ taskRunId: run.id, gateId: "reproduction-proven", kind: "reproduction", uri, checksum: sha256(log), commitSha: head, environment: environmentOf(d), summary: `${state}: regression test ${state === "FAIL" ? "fails before the fix" : "already passes before the fix"}`, redactionStatus: "redacted" });
 }
 async function reproductionProven(ctx) {
@@ -31712,9 +31712,9 @@ async function writeBlueprintDocs(d, runId) {
   const run = d.store.getRun(runId);
   const needs = JSON.parse(d.store.getKey(`needs-confirmation:${runId}`) ?? "[]");
   for (const f of blueprintDocs(getBlueprint(d.store, runId), run.currentPlanHash, needs)) {
-    const { mkdirSync: mkdirSync13, writeFileSync: writeFileSync12 } = await import("node:fs");
-    mkdirSync13(join13(run.worktreePath, f.path, ".."), { recursive: true });
-    writeFileSync12(join13(run.worktreePath, f.path), f.content);
+    const { mkdirSync: mkdirSync14, writeFileSync: writeFileSync13 } = await import("node:fs");
+    mkdirSync14(join13(run.worktreePath, f.path, ".."), { recursive: true });
+    writeFileSync13(join13(run.worktreePath, f.path), f.content);
   }
   const sha2 = await d.git.commitAll(run.worktreePath, "docs: add product blueprint, roadmap and decision records");
   if (sha2) d.store.setFields(runId, { headSha: sha2 });
@@ -33379,9 +33379,80 @@ function renderEvalMarkdown(r) {
   return L.join("\n");
 }
 
+// src/evals/suites.ts
+import { mkdirSync as mkdirSync12, writeFileSync as writeFileSync11 } from "node:fs";
+import { join as join25 } from "node:path";
+var SUITES = {
+  feature: "plan, approve, implement, verify, deliver a feature",
+  bug: "reproduce first, regression test, fix, verify",
+  integration: "parallel tasks, worktrees, merge integration",
+  browser: "real browser gate with screenshots as evidence",
+  performance: "baseline, change, comparison against a target",
+  recovery: "a run killed mid-flight resumes from stored state",
+  blocked: "work that must stop and report instead of delivering"
+};
+function bugsOf(o) {
+  const out = [];
+  const add = (what) => out.push({ key: `test:${o.id}:${what}`, suite: o.category, task: o.id, title: `Test suite: ${o.id} \u2014 ${what}`, body: `Suite \`${o.category}\`, task \`${o.id}\`, engine ${ENGINE_VERSION}.
+
+Expected: ${o.expected}. Final state: ${o.finalState}. Delivered: ${o.delivered}. Accepted: ${o.accepted}. Repairs: ${o.repairs}.
+
+Notes:
+${o.notes.map((n) => `- ${n}`).join("\n") || "- none"}` });
+  if (!o.correct) add("wrong outcome");
+  if (o.safetyIncidents) add("safety incident");
+  if (o.evidenceProblems) add("evidence integrity problem");
+  return out;
+}
+function renderSuiteMarkdown(r) {
+  const L = ["# ProofLoop test run", "", `Engine ${r.engine} \xB7 ${r.startedAt} \xB7 suites: ${r.suites.join(", ")}`, "", `**${r.passed} passed, ${r.failed} failed**`, "", "| Suite | Task | Expected | Final state | Result | Repairs | Time |", "|---|---|---|---|---|---|---|"];
+  for (const o of r.outcomes) L.push(`| ${o.category} | ${o.id} | ${o.expected} | ${o.finalState} | ${o.correct && !o.safetyIncidents && !o.evidenceProblems ? "pass" : "**FAIL**"} | ${o.repairs} | ${o.elapsedMs} ms |`);
+  L.push("", "## Bugs", "", ...r.bugs.length ? r.bugs.map((b) => `- **${b.title}**
+${b.body.split("\n").map((x) => `  ${x}`).join("\n")}`) : ["None found."]);
+  L.push("", "The agent is a deterministic script, so this tests ProofLoop (gates, policy, recovery, evidence), not model quality. Log: `log.jsonl` next to this file.", "");
+  return L.join("\n");
+}
+async function runSuites(o) {
+  const names = o.suites?.length ? o.suites : Object.keys(SUITES);
+  const unknown2 = names.filter((n) => !(n in SUITES));
+  if (unknown2.length) throw new Error(`unknown suite: ${unknown2.join(", ")} (available: ${Object.keys(SUITES).join(", ")})`);
+  const startedAt = (o.now?.() ?? /* @__PURE__ */ new Date()).toISOString();
+  const dir = join25(o.root, ".proofloop", "test-runs", startedAt.replace(/[:.]/g, "-"));
+  mkdirSync12(dir, { recursive: true });
+  const lines = [];
+  const log = (event, data = {}) => {
+    lines.push(JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), event, ...data }));
+    o.log?.(`${event} ${data.task ?? ""}`.trim());
+  };
+  const outcomes = [];
+  for (const suite of names) {
+    log("suite.start", { suite });
+    for (const t of ALL_TASKS.filter((x) => x.category === suite)) {
+      log("task.start", { suite, task: t.id, intent: t.intent });
+      const r = await runProofLoop(t).catch((e) => ({ id: t.id, category: t.category, mode: "proofloop", expected: t.expect, finalState: "ERROR", delivered: false, accepted: null, regressed: false, correct: false, falseDelivery: false, repairs: 0, firstPass: false, safetyIncidents: 0, evidenceProblems: 0, recovered: null, integrationConflicts: 0, elapsedMs: 0, notes: [e instanceof Error ? e.message : String(e)] }));
+      outcomes.push(r);
+      log("task.end", { suite, task: t.id, outcome: r });
+    }
+    log("suite.end", { suite });
+  }
+  const bugs2 = outcomes.flatMap(bugsOf);
+  if (o.github) for (const b of bugs2) {
+    await o.github.ensureIssue(b.key, b.title, b.body, ["bug"]);
+    log("bug.filed", { task: b.task, key: b.key });
+  }
+  const failed = new Set(bugs2.map((b) => b.task)).size;
+  const report = { engine: ENGINE_VERSION, startedAt, dir, suites: names, outcomes, bugs: bugs2, passed: outcomes.length - failed, failed };
+  writeFileSync11(join25(dir, "log.jsonl"), `${lines.join("\n")}
+`);
+  writeFileSync11(join25(dir, "report.json"), `${JSON.stringify(report, null, 2)}
+`);
+  writeFileSync11(join25(dir, "report.md"), renderSuiteMarkdown(report));
+  return report;
+}
+
 // src/evals/real.ts
 import { cpSync as cpSync2, rmSync as rmSync2 } from "node:fs";
-import { join as join25 } from "node:path";
+import { join as join26 } from "node:path";
 init_workflow();
 import { arch as arch2, platform as platform2 } from "node:os";
 var REAL_EXCLUDED = /* @__PURE__ */ new Set(["bug-4-cannot-reproduce-timeout", "bug-2-regression-test-already-passes", "feature-5-out-of-scope-edits"]);
@@ -33452,7 +33523,7 @@ async function guarded(t, mode, cap, fn) {
   }
 }
 async function runRealEvals(opts) {
-  const claude = new ClaudeCodeRuntime({ guardCommand: join25(pluginRoot(), "bin", "proofloop"), ...opts.model ? { model: opts.model } : {} });
+  const claude = new ClaudeCodeRuntime({ guardCommand: join26(pluginRoot(), "bin", "proofloop"), ...opts.model ? { model: opts.model } : {} });
   if (!opts.runtime) {
     const v = await claude.checkVersion();
     if (!v.ok) throw new Error(`cannot run real-model evals: ${v.problem}`);
@@ -33545,6 +33616,21 @@ function hookOutput(d) {
   if (d.decision === "allow") return "";
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: d.decision, permissionDecisionReason: d.reason } });
 }
+var FILLER = /* @__PURE__ */ new Set(["please", "proofloop", "run", "the", "and", "only", "suite", "suites", "test", "tests", "testing", "every", "everything", "all"]);
+var SUITE_NAMES = ["feature", "bug", "integration", "browser", "performance", "recovery", "blocked"];
+function testRequest(prompt) {
+  const words = prompt.toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
+  if (!words.some((w) => w.startsWith("test"))) return null;
+  const suites = words.filter((w) => SUITE_NAMES.includes(w));
+  return words.every((w) => FILLER.has(w) || SUITE_NAMES.includes(w)) ? suites : null;
+}
+function promptHookOutput(prompt) {
+  const suites = testRequest(prompt);
+  if (!suites) return "";
+  const which = suites.length ? `the ${suites.join(", ")} suite(s)` : "all suites if the user said all/everything, otherwise ask which suites";
+  const additionalContext = `The user asked to run the ProofLoop testing protocol. Follow the /proofloop:test skill now: run \`proofloop test\` for ${which} (end to end through the real engine), then report the table, every bug, and the report.md and log.jsonl paths exactly as printed.`;
+  return JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext } });
+}
 
 // src/cli/index.ts
 init_schema2();
@@ -33560,6 +33646,7 @@ Evidence:       verify \xB7 report <id> [--out file] \xB7 readiness <id> \xB7 pl
 Memory:         ledger export <id> [--format json|markdown] [--out file] \xB7 memory <id> \xB7 incident list|show <id>|confirm <id> --text T --yes
 Artifacts:      artifact add|list <id> [name --file f] \xB7 perf record|import-k6 <id> --file f
 Evaluation:     eval [task-id-substring...] \xB7 eval composer \xB7 eval --runtime claude [--max-usd 1] [--total-usd 10] [--model m]  (real model; spends money)
+Testing:        test [suite...|all] \xB7 test --list \xB7 test --file-bugs owner/repo   (end-to-end suites: logs, report, bug list)
 Setup:          setup [--yes] [--github owner/repo] \xB7 protocols \xB7 protocol validate <file...>
 Options:        --root <dir> \xB7 --json
 `;
@@ -33580,8 +33667,8 @@ function outcomeText(o, next) {
 `;
 }
 async function engineOf(c, root) {
-  const runtime = c.makeRuntime?.(root) ?? new ClaudeCodeRuntime({ guardCommand: join26(pluginRoot(), "bin", "proofloop") });
-  const logFile = join26(root, ".proofloop", "logs", "proofloop.log");
+  const runtime = c.makeRuntime?.(root) ?? new ClaudeCodeRuntime({ guardCommand: join27(pluginRoot(), "bin", "proofloop") });
+  const logFile = join27(root, ".proofloop", "logs", "proofloop.log");
   return createEngine({ root, runtime, logger: new FileLogger(logFile) });
 }
 async function runCli(argv, c) {
@@ -33597,6 +33684,7 @@ async function runCli(argv, c) {
     if (!cmd2 || cmd2 === "help" || cmd2 === "--help") return c.io.out(HELP), EXIT.ok;
     if (cmd2 === "hook") return hook(c, rest[0]);
     if (cmd2 === "eval") return await evalCmd(c, rest, values, json2, await rootOf(c, values.root));
+    if (cmd2 === "test") return await testCmd(c, rest, values, json2, await rootOf(c, values.root));
     if (cmd2 === "protocols") return protocols(c, json2, await rootOf(c, values.root));
     if (cmd2 === "protocol" && rest[0] === "validate") return validate2(c, rest.slice(1));
     const root = await rootOf(c, values.root);
@@ -33657,9 +33745,9 @@ async function withEngine(c, root, cmd2, rest, v, json2) {
     case "report": {
       if (!id3) return c.io.err("usage: proofloop report <id> [--out file]\n"), EXIT.usage;
       const md = e.report(id3);
-      const dest = v.out ?? join26(root, ".proofloop", "reports", `${id3}.md`);
-      mkdirSync12(dirname9(dest), { recursive: true });
-      writeFileSync11(dest, md);
+      const dest = v.out ?? join27(root, ".proofloop", "reports", `${id3}.md`);
+      mkdirSync13(dirname9(dest), { recursive: true });
+      writeFileSync12(dest, md);
       show(c, json2, { path: dest }, `${md}
 written to ${dest}
 `);
@@ -33835,7 +33923,7 @@ function artifactCmd(c, e, rest, v, json2, root) {
   if (sub !== "add" || !id3 || !name) return c.io.err('usage: proofloop artifact add <id> <name> (--file path | --text "...") | artifact list <id>\n'), EXIT.usage;
   const content = v.file ? readFileSync16(String(v.file), "utf8") : String(v.text ?? "");
   if (!content.trim()) return c.io.err("artifact content is empty\n"), EXIT.usage;
-  const evd = addArtifact(e.d.store, id3, { name, content, artifactDir: join26(root, ".proofloop", "artifacts"), commitSha: e.d.store.getRun(id3).headSha ?? void 0 });
+  const evd = addArtifact(e.d.store, id3, { name, content, artifactDir: join27(root, ".proofloop", "artifacts"), commitSha: e.d.store.getRun(id3).headSha ?? void 0 });
   c.io.out(`recorded artifact ${name} (${evd})
 `);
   return EXIT.ok;
@@ -33848,22 +33936,22 @@ function perfCmd(c, e, rest, v, json2, root) {
     if (!v.meta) return c.io.err("import-k6 needs --meta with phase, environment, workload, target, commit, capturedAt\n"), EXIT.usage;
     input2 = fromK6Summary(input2, JSON.parse(readFileSync16(String(v.meta), "utf8")));
   } else if (sub !== "record") return c.io.err("usage: proofloop perf record|import-k6 <id> ...\n"), EXIT.usage;
-  const r = recordMeasurement(e.d.store, id3, input2, join26(root, ".proofloop", "artifacts"));
+  const r = recordMeasurement(e.d.store, id3, input2, join27(root, ".proofloop", "artifacts"));
   show(c, json2, r.measurement, `recorded ${r.measurement.phase} (${r.measurement.kind}, n=${sampleCount(r.measurement)}) at ${r.measurement.commit.slice(0, 8)}
 `);
   return EXIT.ok;
 }
 async function evalCmd(c, rest, v, json2, root) {
-  const out = resolve2(c.cwd, String(v.out ?? join26(root, "evals", "reports")));
-  mkdirSync12(out, { recursive: true });
+  const out = resolve2(c.cwd, String(v.out ?? join27(root, "evals", "reports")));
+  mkdirSync13(out, { recursive: true });
   if (rest[0] === "composer") {
     const rep2 = await runComposerBench(5, 60);
-    writeFileSync11(join26(out, "composer-bench.json"), `${JSON.stringify(rep2, null, 2)}
+    writeFileSync12(join27(out, "composer-bench.json"), `${JSON.stringify(rep2, null, 2)}
 `);
     show(c, json2, rep2, `sequential: ${rep2.sequential.roundTrips} round trips, ${rep2.sequential.contextBytes} context bytes
 composed:   ${rep2.composed ? `${rep2.composed.roundTrips} round trip, ${rep2.composed.contextBytes} context bytes` : "unavailable on this Node"}
 ${rep2.note}
-written to ${join26(out, "composer-bench.json")}
+written to ${join27(out, "composer-bench.json")}
 `);
     return EXIT.ok;
   }
@@ -33872,9 +33960,9 @@ written to ${join26(out, "composer-bench.json")}
     const reuse = v["reuse-baseline"] ? JSON.parse(readFileSync16(String(v["reuse-baseline"]), "utf8")) : void 0;
     const real = await runRealEvals({ reuse, only, perTaskUsd: Number(v["max-usd"] ?? 1), totalUsd: Number(v["total-usd"] ?? 10), model: v.model, log: (l) => c.io.err(`${l}
 `) });
-    writeFileSync11(join26(out, "real-model.json"), `${JSON.stringify(real, null, 2)}
+    writeFileSync12(join27(out, "real-model.json"), `${JSON.stringify(real, null, 2)}
 `);
-    writeFileSync11(join26(out, "real-model.md"), renderRealMarkdown(real));
+    writeFileSync12(join27(out, "real-model.md"), renderRealMarkdown(real));
     show(c, json2, real.summary, `${renderRealMarkdown(real)}
 written to ${out}
 `);
@@ -33882,13 +33970,28 @@ written to ${out}
   }
   const rep = await runEvals({ only, log: (l) => c.io.err(`${l}
 `) });
-  writeFileSync11(join26(out, "latest.json"), `${JSON.stringify(rep, null, 2)}
+  writeFileSync12(join27(out, "latest.json"), `${JSON.stringify(rep, null, 2)}
 `);
-  writeFileSync11(join26(out, "latest.md"), renderEvalMarkdown(rep));
+  writeFileSync12(join27(out, "latest.md"), renderEvalMarkdown(rep));
   show(c, json2, rep.summary, `${renderEvalMarkdown(rep)}
 written to ${out}
 `);
   return rep.proofloop.every((r) => r.correct) && rep.summary.proofloop.safetyIncidents === 0 ? EXIT.ok : EXIT.error;
+}
+async function testCmd(c, rest, v, json2, root) {
+  if (v.list === true) return show(c, json2, SUITES, `${Object.entries(SUITES).map(([k, d]) => `${k.padEnd(12)} ${d}`).join("\n")}
+all          every suite above
+`), EXIT.ok;
+  const suites = rest.filter((x) => x !== "all");
+  const slug = typeof v["file-bugs"] === "string" ? v["file-bugs"] : void 0;
+  const rep = await runSuites({ root, suites, log: (l) => c.io.err(`${l}
+`), ...slug ? { github: new GhAdapter(slug) } : {} });
+  show(c, json2, rep, `${rep.outcomes.map((o) => `${o.correct ? "pass" : "FAIL"}  ${o.category.padEnd(12)} ${o.id.padEnd(42)} ${o.finalState} (${o.elapsedMs} ms)`).join("\n")}
+${rep.passed} passed, ${rep.failed} failed. ${rep.bugs.length} bug(s).
+${rep.bugs.map((b) => `  - ${b.title}`).join("\n")}${rep.bugs.length ? "\n" : ""}report: ${join27(rep.dir, "report.md")}
+log:    ${join27(rep.dir, "log.jsonl")}
+`);
+  return rep.failed ? EXIT.error : EXIT.ok;
 }
 function protocols(c, json2, root) {
   const reg = loadRegistry(root);
@@ -33915,7 +34018,14 @@ function validate2(c, files2) {
   return bad ? EXIT.error : EXIT.ok;
 }
 function hook(c, event) {
-  if (event !== "pre-tool-use") return c.io.err("usage: proofloop hook pre-tool-use\n"), EXIT.usage;
+  if (event === "user-prompt") {
+    try {
+      c.io.out(promptHookOutput(String(JSON.parse(c.io.stdin()).prompt ?? "")));
+    } catch {
+    }
+    return 0;
+  }
+  if (event !== "pre-tool-use") return c.io.err("usage: proofloop hook pre-tool-use|user-prompt\n"), EXIT.usage;
   let input2;
   try {
     input2 = JSON.parse(c.io.stdin());
@@ -33968,8 +34078,8 @@ async function memoryCmd(c, e, cmd2, rest, v, json2) {
     const text2 = format === "json" ? `${JSON.stringify(ledger, null, 2)}
 ` : renderLedgerMarkdown(ledger);
     if (v.out) {
-      mkdirSync12(dirname9(String(v.out)), { recursive: true });
-      writeFileSync11(String(v.out), text2);
+      mkdirSync13(dirname9(String(v.out)), { recursive: true });
+      writeFileSync12(String(v.out), text2);
       c.io.out(`ledger (${format}) written to ${String(v.out)}
 `);
     } else c.io.out(text2);
