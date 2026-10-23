@@ -9,6 +9,7 @@
 A Claude Code plugin that wraps every change in a plan you approve, gates that must pass on the exact commit, and an evidence trail you can audit.
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![npm](https://img.shields.io/npm/v/@vamsiivarmaa/proofloop/next)](https://www.npmjs.com/package/@vamsiivarmaa/proofloop)
 ![Status](https://img.shields.io/badge/status-1.0.0--rc.2-orange)
 ![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.13-339933)
 

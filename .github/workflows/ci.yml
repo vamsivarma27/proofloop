@@ -1,7 +1,7 @@
 name: ci
 on:
   pull_request:
-    branches: [develop, stage, release]
+    branches: [main, develop, stage, release]
   push:
     branches: [develop, 'feature/**', 'bugfix/**', 'task/**']
   workflow_dispatch:

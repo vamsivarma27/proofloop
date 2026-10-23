@@ -28,4 +28,4 @@ evals/reports/  latest generated evaluation reports
 docs/         architecture, decisions (ADRs), guides, security, plans
 ```
 
-Naming: top-level documents are `CAPITAL_CASE.md`; folders under `docs/` are `kebab-case`. Database tables are singular snake_case with `_utc` timestamps. ProofLoop is a local single-user tool, so the multi-tenant rules (`tenant_id`) of ZySec services do not apply here; there is no network service.
+Naming: top-level documents are `CAPITAL_CASE.md`; folders under `docs/` are `kebab-case`. Database tables are singular snake_case with `_utc` timestamps. ProofLoop is a local single-user tool with no network service, so multi-tenant rules (`tenant_id`) do not apply.

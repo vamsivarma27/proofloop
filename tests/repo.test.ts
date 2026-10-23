@@ -112,7 +112,7 @@ describe('Git worktrees', () => {
     expect(await git.isClean(root)).toBe(true);
   });
 
-  it('names branches per the ZySec convention', () => {
+  it('names branches per the feature/bugfix/task convention', () => {
     expect(branchName('feature', 'Add pagination to the Users page!', 'run_abcdef123456')).toBe('feature/add-pagination-to-the-users-page-123456');
     expect(branchName('bug', 'x', 'run_000001')).toMatch(/^bugfix\//);
     expect(branchName('performance', 'x', 'run_000001')).toMatch(/^task\//);
