@@ -129,7 +129,7 @@ export function buildLedger(store: Store, runId: string, opts: LedgerOptions = {
   return redactValue(ledger);
 }
 
-const cell = (s: string): string => s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+const cell = (s: string): string => s.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 const sha = (s: string | null): string => (s ? s.slice(0, 8) : 'n/a');
 
 export function renderLedgerMarkdown(l: ProofLedger): string {

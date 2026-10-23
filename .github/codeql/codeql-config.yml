@@ -1,0 +1,5 @@
+name: proofloop codeql
+# dist/cli.js is the esbuild bundle of src/; scanning both reports every finding twice
+paths-ignore:
+  - dist
+  - node_modules

@@ -31339,7 +31339,7 @@ function buildLedger(store, runId, opts = {}) {
   if (!opts.changedFiles) ledger.assessment.missingEvidence.push("changed files were not resolved from Git for this export");
   return redactValue(ledger);
 }
-var cell = (s) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
+var cell = (s) => s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 var sha = (s) => s ? s.slice(0, 8) : "n/a";
 function renderLedgerMarkdown(l) {
   const L = ["# ProofLoop Proof Ledger", "", `Schema v${l.schemaVersion}`, "", "## Task", "", `- Task: ${l.task.id}`, `- GitHub issue: ${l.task.githubIssue ? `#${l.task.githubIssue.number}` : "none"}`, `- Protocol: ${l.task.protocol} (risk ${l.task.risk})`, `- Status: ${l.task.state}`, `- Base revision: ${sha(l.task.baseRevision)}`, `- Head revision: ${sha(l.task.headRevision)}`, `- Intent: ${cell(l.task.intent)}`, ""];

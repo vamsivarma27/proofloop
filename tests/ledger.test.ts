@@ -259,6 +259,14 @@ describe('proof ledger integrity', () => {
     expect(text).not.toContain(FAKE_GH_TOKEN);
   });
 
+  it('escapes backslashes and pipes so table cells cannot be broken out of', () => {
+    const { store, id } = runWithGates();
+    incidentsOf({ store, clock: undefined } as never).create({ taskRunId: id, repositoryId: 'o/r', title: 't', summary: 's', symptoms: ['a \\| b'] });
+    store.audit(id, 'note', 'engine', { text: 'x' });
+    const md = renderLedgerMarkdown({ ...buildLedger(store, id), task: { ...buildLedger(store, id).task, intent: 'a\\|b | c\nd' } });
+    expect(md).toContain('Intent: a\\\\\\|b \\| c d');
+  });
+
   it('reports blocked and cancelled runs as such, with the reason', () => {
     const { store, id } = runWithGates();
     store.transition(id, 'BLOCKED', { actor: 'engine', reason: 'repair budget exhausted' });
