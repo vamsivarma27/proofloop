@@ -6,7 +6,7 @@
 | `BLOCKED … identical failure repeated` | the same gate failed the same way after a repair | read `proofloop report <id>` and the evidence log paths; fix by hand or re-plan |
 | `BLOCKED … cannot be fixed by editing code: x=BLOCKED/environment` | a tool, browser, credential or service is missing | fix the environment, then `proofloop resume <id> --retry` |
 | `PAUSED` | rate limit/quota or a user pause | `proofloop resume <id>` |
-| `AWAITING_APPROVAL` | waiting for you | review the plan, `proofloop approve <id> --plan-hash <hash>` |
+| `AWAITING_APPROVAL` | waiting for you | review the plan, then reply `approve` in chat (terminal: `proofloop approve <id> --plan-hash <hash>` then `proofloop run <id>`) |
 | `REVIEW_REQUIRED … waiting: github` | push/PR creation failed (auth, remote, network) | fix, then `proofloop resume <id>`; nothing is queued silently |
 | `PR_OPEN` | waiting for a human to merge | merge; `proofloop resume <id>` records completion |
 | `worktree … is missing` | the worktree directory was deleted | the branch is intact; `resume --retry` recreates it |

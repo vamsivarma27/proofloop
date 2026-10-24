@@ -12,4 +12,4 @@ Run this and wait for it to finish (it can take several minutes; use a long time
 proofloop feature "$ARGUMENTS"
 ```
 
-Then show the user the whole plan from the output (at a glance, tasks, acceptance criteria, commands) and the "Gate plan preview", plus any warnings. **Do not approve anything yourself.** Tell them to review and, when satisfied, run `/proofloop:approve <run-id>`. Never describe work as passing unless a gate result in the output says PASS. If the output says BLOCKED, report the reason and evidence path verbatim.
+Then show the user the whole plan from the output (at a glance, tasks, acceptance criteria, commands) and the "Gate plan preview", plus any warnings. **Do not run approve or run yourself.** End your reply with exactly this line: `Reply **approve** to run this plan (or tell me what to change).` One word from the user approves the plan and starts the whole run; after that you only follow the hook's instructions. Never describe work as passing unless a gate result in the output says PASS. If the output says BLOCKED, report the reason and evidence path verbatim.

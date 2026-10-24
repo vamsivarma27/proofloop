@@ -93,7 +93,8 @@ export function validatePlan(input: unknown, opts: { protocolId?: string } = {})
   }
 
   const floor = classifyRisk(plan.affectedModules.map((m) => m.path));
-  if (riskRank(plan.risk.level) < riskRank(floor)) errors.push(`plan risk "${plan.risk.level}" is below the engine-computed minimum "${floor}" for the affected paths; agents cannot lower risk`);
+  const raised = riskRank(plan.risk.level) < riskRank(floor);
+  if (raised) warnings.push(`risk raised from "${plan.risk.level}" to "${floor}": that is the engine's minimum for the affected paths (agents can raise risk, never lower it)`);
   if (opts.protocolId === 'bug' && !plan.regressionTest) errors.push('bug plans need a regressionTest (file + command)');
   if (opts.protocolId === 'bug' && !plan.reproduction) errors.push('bug plans need a reproduction record (reproducible: yes|no|unknown)');
   if (opts.protocolId === 'bug' && !(plan.rootCause?.confirmed || plan.rootCause?.uncertainty)) errors.push('bug plans need a rootCause with a confirmed cause or an explicit uncertainty');
@@ -112,8 +113,8 @@ export function validatePlan(input: unknown, opts: { protocolId?: string } = {})
     for (const m of plan.affectedModules) if (m.status === 'hypothesis') warnings.push(`${m.path} is a hypothesis, not a confirmed impact`);
     for (const a of plan.assumptions) if (!a.confirmed && riskRank(a.impact) >= riskRank('high')) warnings.push(`high-impact assumption ${a.id} is unconfirmed`);
   }
-  const effectiveRisk = riskRank(plan.risk.level) >= riskRank(floor) ? plan.risk.level : floor;
-  return { plan: errors.length === 0 ? plan : undefined, errors, warnings, effectiveRisk };
+  const effectiveRisk = raised ? floor : plan.risk.level;
+  return { plan: errors.length === 0 ? (raised ? { ...plan, risk: { ...plan.risk, level: floor } } : plan) : undefined, errors, warnings, effectiveRisk };
 }
 
 export function renderPlanMarkdown(plan: Plan, hash: string, version: number): string {

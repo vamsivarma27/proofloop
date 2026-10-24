@@ -79,8 +79,8 @@ Needs Node ≥ 22.13, Git, and optionally an authenticated `gh` for issues and P
 /proofloop:setup                              read-only self-check
 /proofloop:feature Add pagination to the users page
                                               → plan, acceptance criteria, risk, gate preview
-/proofloop:approve <run-id>                   you review the plan hash
-proofloop run <run-id>                        implement, verify, review, open a PR
+approve                                       one word: records your approval of the plan hash and
+                                              runs everything (implement, verify, review, PR) with no more prompts
 /proofloop:status
 ```
 
