@@ -1,5 +1,6 @@
 import { parseArgs } from 'node:util';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { ClaudeCodeRuntime, type AgentRuntime } from '../agent/runtime';
 import { configPath, configSchema, writeConfig } from '../config';
@@ -28,7 +29,7 @@ import { renderReadiness } from '../engine/report';
 import { TOPICS, type TopicId, fillDefaults, loadInterview, nextQuestion, recordAnswer } from '../blueprint/interview';
 import { renderBlueprintMarkdown } from '../blueprint/render';
 import { getBlueprint, submitBlueprint } from '../blueprint/workflow';
-import { evaluateHook, hookOutput, promptHookOutput } from './hook';
+import { approvalRequest, approvedContext, evaluateHook, hookOutput, promptHookOutput } from './hook';
 import { renderPlanMarkdown } from '../plan/schema';
 import { getPlan } from '../plan/workflow';
 import type { Plan } from '../plan/schema';
@@ -50,6 +51,8 @@ export interface CliEnv {
   env: NodeJS.ProcessEnv;
   io: Io;
   makeRuntime?: (root: string) => AgentRuntime;
+  /** tests replace the detached background run */
+  startRun?: (root: string, runId: string, log: string) => void;
 }
 
 export const EXIT = { ok: 0, error: 1, usage: 2, refused: 3, blocked: 10, paused: 11 } as const;
@@ -58,7 +61,7 @@ const HELP = `proofloop ${ENGINE_VERSION}
 
 Task commands:  feature|bug|diagnose|performance|refactor|security "<request>" · start-project "<idea>"
 Blueprint:      blueprint next-question|answer|defaults|submit|show <id>
-Lifecycle:      status [id] · approve <id> --plan-hash H [--scope S] · reject <id> --comment C · run <id> · resume <id> [--retry] · cancel <id> · pause <id>
+Lifecycle:      status [id] · wait <id> [--timeout s] · approve <id> --plan-hash H [--scope S] · reject <id> --comment C · run <id> · resume <id> [--retry] · cancel <id> · pause <id>
 Evidence:       verify · report <id> [--out file] · readiness <id> · plan show <id>
 Memory:         ledger export <id> [--format json|markdown] [--out file] · memory <id> · incident list|show <id>|confirm <id> --text T --yes
 Artifacts:      artifact add|list <id> [name --file f] · perf record|import-k6 <id> --file f
@@ -97,13 +100,13 @@ export async function runCli(argv: string[], c: CliEnv): Promise<number> {
     args: argv,
     allowPositionals: true,
     strict: false,
-    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' }, runtime: { type: 'string' }, 'max-usd': { type: 'string' }, 'reuse-baseline': { type: 'string' }, 'total-usd': { type: 'string' }, model: { type: 'string' }, meta: { type: 'string' }, format: { type: 'string' }, topic: { type: 'string' }, text: { type: 'string' }, users: { type: 'string' }, p95: { type: 'string' }, p99: { type: 'string' }, 'error-rate': { type: 'string' }, requests: { type: 'string' }, path: { type: 'string', multiple: true }, 'file-bugs': { type: 'boolean' }, 'no-baseline': { type: 'boolean' }, list: { type: 'boolean' }, checklist: { type: 'boolean' } },
+    options: { root: { type: 'string' }, json: { type: 'boolean' }, yes: { type: 'boolean' }, retry: { type: 'boolean' }, 'plan-hash': { type: 'string' }, scope: { type: 'string' }, comment: { type: 'string' }, out: { type: 'string' }, github: { type: 'string' }, file: { type: 'string' }, again: { type: 'boolean' }, runtime: { type: 'string' }, 'max-usd': { type: 'string' }, 'reuse-baseline': { type: 'string' }, 'total-usd': { type: 'string' }, model: { type: 'string' }, meta: { type: 'string' }, format: { type: 'string' }, topic: { type: 'string' }, text: { type: 'string' }, users: { type: 'string' }, p95: { type: 'string' }, p99: { type: 'string' }, 'error-rate': { type: 'string' }, requests: { type: 'string' }, path: { type: 'string', multiple: true }, 'file-bugs': { type: 'boolean' }, 'no-baseline': { type: 'boolean' }, list: { type: 'boolean' }, checklist: { type: 'boolean' }, timeout: { type: 'string' } },
   });
   const [cmd, ...rest] = positionals;
   const json = values.json === true;
   try {
     if (!cmd || cmd === 'help' || cmd === '--help') return (c.io.out(HELP), EXIT.ok);
-    if (cmd === 'hook') return hook(c, rest[0]);
+    if (cmd === 'hook') return await hook(c, rest[0]);
     if (cmd === 'eval') return await evalCmd(c, rest, values as Record<string, string | boolean | undefined>, json, await rootOf(c, values.root as string | undefined));
     if (cmd === 'selftest') return await testCmd(c, rest, values as Record<string, string | boolean | undefined>, json, await rootOf(c, values.root as string | undefined));
     if (cmd === 'protocols') return protocols(c, json, await rootOf(c, values.root as string | undefined));
@@ -140,6 +143,9 @@ async function withEngine(c: CliEnv, root: string, cmd: string, rest: string[], 
     }
     case 'status':
       return status(c, e, id, json);
+    case 'wait':
+      if (!id) return (c.io.err('usage: proofloop wait <id> [--timeout seconds]\n'), EXIT.usage);
+      return await waitFor(c, e, id, Number(v.timeout ?? WAIT_DEFAULT_S), json);
     case 'run':
     case 'resume': {
       if (!id) return (c.io.err(`usage: proofloop ${cmd} <id>\n`), EXIT.usage);
@@ -207,6 +213,26 @@ function status(c: CliEnv, e: Eng, id: string | undefined, json: boolean): numbe
   const runs = e.d.store.listRuns({ activeOnly: true });
   show(c, json, runs.map((r) => ({ id: r.id, protocol: r.protocolId, state: r.state, intent: r.intent })), runs.length ? `${runs.map((r) => `${r.id}  ${r.state.padEnd(16)} ${r.protocolId.padEnd(15)} ${r.intent.slice(0, 60)}`).join('\n')}\n` : 'no active runs\n');
   return EXIT.ok;
+}
+
+const WAIT_DEFAULT_S = 540;
+const WAIT_POLL_MS = 3000;
+const WAIT_STOPS = new Set(['COMPLETE', 'CANCELLED', 'BLOCKED', 'PAUSED', 'AWAITING_APPROVAL', 'REVIEW_REQUIRED', 'PR_OPEN']);
+
+/** Read-only: follow a run (started by the approval hook or a terminal) until it ends, needs a human, or the time is up. */
+async function waitFor(c: CliEnv, e: Eng, id: string, seconds: number, json: boolean): Promise<number> {
+  const end = Date.now() + (Number.isFinite(seconds) && seconds > 0 ? seconds : WAIT_DEFAULT_S) * 1000;
+  let last = '';
+  for (;;) {
+    const state = e.d.store.getRun(id).state;
+    if (state !== last) c.io.out(`${new Date().toISOString().slice(11, 19)} ${state}\n`);
+    last = state;
+    if (WAIT_STOPS.has(state)) break;
+    if (Date.now() >= end) return (c.io.out(`still running (${state}); run: proofloop wait ${id}\n`), EXIT.ok);
+    await new Promise((r) => setTimeout(r, WAIT_POLL_MS));
+  }
+  const code = status(c, e, id, json);
+  return last === 'BLOCKED' ? EXIT.blocked : code;
 }
 
 function confirmed(c: CliEnv, question: string, yes: boolean): boolean {
@@ -414,10 +440,39 @@ function validate(c: CliEnv, files: string[]): number {
   return bad ? EXIT.error : EXIT.ok;
 }
 
-function hook(c: CliEnv, event: string | undefined): number {
+const promptContext = (additionalContext: string): string => JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext } });
+
+/**
+ * The user's one-word approval in chat. It arrives through UserPromptSubmit, so it is a human act no agent can forge;
+ * the hook records it for the plan hash currently awaiting approval and starts the run in the background.
+ */
+async function approveByPrompt(c: CliEnv, cwd: string, wanted?: string): Promise<string> {
+  const root = await rootOf({ ...c, cwd });
+  if (!existsSync(join(root, '.proofloop'))) return '';
+  const e = await engineOf(c, root);
+  const waiting = e.d.store.listRuns({ activeOnly: true }).filter((r) => r.state === 'AWAITING_APPROVAL' && (!wanted || r.id === wanted));
+  const run = waiting[0];
+  if (!run?.currentPlanHash) return '';
+  if (waiting.length > 1) return promptContext(`Several plans await approval (${waiting.map((r) => r.id).join(', ')}). Nothing was approved. Ask the user which one, and tell them to reply "approve <run-id>".`);
+  approvePlan(e.d.store, run.id, { planHash: run.currentPlanHash, by: humanActor(), comment: 'approved by the user in chat' });
+  const log = join(root, '.proofloop', 'logs', `run-${run.id}.log`);
+  mkdirSync(dirname(log), { recursive: true });
+  (c.startRun ?? ((r, id, file) => detachedRun(r, id, file, c.env)))(root, run.id, log);
+  return promptContext(approvedContext(run.id, run.currentPlanHash, log));
+}
+
+function detachedRun(root: string, runId: string, log: string, env: NodeJS.ProcessEnv): void {
+  const fd = openSync(log, 'a');
+  spawn(process.execPath, [...process.execArgv, process.argv[1]!, 'run', runId, '--root', root], { detached: true, stdio: ['ignore', fd, fd], env }).unref();
+}
+
+async function hook(c: CliEnv, event: string | undefined): Promise<number> {
   if (event === 'user-prompt') {
     try {
-      c.io.out(promptHookOutput(String((JSON.parse(c.io.stdin()) as { prompt?: unknown }).prompt ?? '')));
+      const input = JSON.parse(c.io.stdin()) as { prompt?: unknown; cwd?: unknown };
+      const prompt = String(input.prompt ?? '');
+      const approval = approvalRequest(prompt);
+      c.io.out(approval ? await approveByPrompt(c, typeof input.cwd === 'string' ? input.cwd : c.cwd, approval.runId) : promptHookOutput(prompt));
     } catch {
       /* fail open: this hook only adds context */
     }

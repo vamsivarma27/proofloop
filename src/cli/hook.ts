@@ -10,9 +10,13 @@ export interface HookInput {
 export interface HookDecision {
   decision: 'allow' | 'deny' | 'ask';
   reason: string;
+  /** an allow that skips Claude Code's own permission prompt; only for ProofLoop commands that cannot change state */
+  explicit?: boolean;
 }
 
 const MUTATING = new Set(['approve', 'reject', 'cancel', 'pause', 'resume', 'run', 'gates', 'artifact', 'perf', 'blueprint', 'waive']);
+/** ProofLoop commands that only plan, read or run the project's own checks. Never prompt for these. */
+const SAFE = new Set(['feature', 'bug', 'diagnose', 'performance', 'refactor', 'security', 'start-project', 'status', 'wait', 'report', 'readiness', 'ledger', 'memory', 'protocols', 'verify', 'test', 'audit', 'selftest', 'setup']);
 const HUMAN_ONLY = new Set(['approve', 'reject']);
 const WRAPPERS = new Set(['env', 'sudo', 'node', 'npx', 'bash', 'sh', 'zsh', 'command', 'exec', 'time', 'nohup']);
 const ASSIGNMENT = /^\w+=/;
@@ -64,11 +68,18 @@ function bashDecision(command: string, agent: boolean): HookDecision {
     if (verdict.verdict === 'needs_approval' && (verdict.cls === 'critical' || verdict.cls === 'destructive'))
       return agent ? { decision: 'deny', reason: `ProofLoop policy: ${verdict.reason} requires explicit human approval immediately before the action` } : { decision: 'ask', reason: `ProofLoop policy: ${verdict.reason}; confirm this ${verdict.cls} action` };
   }
+  if (isPlainSafeCall(command, subs)) return { decision: 'allow', reason: 'read-only or planning ProofLoop command', explicit: true };
   return { decision: 'allow', reason: 'no policy objection' };
 }
 
+/** One ProofLoop invocation and nothing else on the line (no chaining, redirects or substitution outside quotes). */
+function isPlainSafeCall(command: string, subs: string[]): boolean {
+  const bare = command.replaceAll('${CLAUDE_PLUGIN_ROOT}', '').replace(/'[^']*'/g, '').replace(/"[^"$`\\]*"/g, '');
+  return new Set(subs).size === 1 && SAFE.has(subs[0]!) && !/[;&|<>`$()\n\\]/.test(bare) && !/\bsetup\b.*--yes/.test(bare);
+}
+
 export function hookOutput(d: HookDecision): string {
-  if (d.decision === 'allow') return '';
+  if (d.decision === 'allow' && !d.explicit) return '';
   return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: d.decision, permissionDecisionReason: d.reason } });
 }
 
@@ -108,3 +119,19 @@ export function promptHookOutput(prompt: string): string {
   const additionalContext = `The user asked to run the ProofLoop test protocol on THIS project. Follow the /proofloop:test skill now, covering ${which}: full checks on the current commit, browser journeys with personas, and a regression comparison with the base branch. Do not ask which suites; run it.`;
   return JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext } });
 }
+
+const APPROVE_PHRASES = new Set(['approve', 'approved', 'approve it', 'approve plan', 'approve the plan', 'approve and run', 'approve run', 'lgtm', 'go ahead', 'proceed', 'run it', 'ship it']);
+const RUN_ID = /\brun_[a-z0-9]+\b/i;
+
+/** The human's one-word approval of the pending plan ("approve", "lgtm", "/proofloop:approve [run-id]"). Anything longer is a normal prompt. */
+export function approvalRequest(prompt: string): { runId?: string } | null {
+  const slash = /^\/proofloop:approve\b\s*(\S*)\s*$/i.exec(prompt.trim());
+  if (slash) return slash[1] ? { runId: slash[1] } : {};
+  const text = prompt.toLowerCase().replace(/[^a-z0-9_\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const runId = RUN_ID.exec(text)?.[0];
+  const phrase = text.replace(RUN_ID, '').replace(/\s+/g, ' ').trim();
+  return APPROVE_PHRASES.has(phrase) ? (runId ? { runId } : {}) : null;
+}
+
+export const approvedContext = (runId: string, hash: string, log: string): string =>
+  `The user approved the plan (${hash.slice(0, 12)}) for ${runId} with their message. Approval is recorded and the run has started in the background (log: ${log}). Do not run approve or run yourself and do not ask anything. Run \`proofloop wait ${runId}\` (blocks up to 9 minutes, never prompts); if it says the run is still going, run it again. When it ends, run \`proofloop report ${runId}\` and tell the user: final state, each gate PASS/FAIL/BLOCKED, the PR link if any, and what is not proven.`;

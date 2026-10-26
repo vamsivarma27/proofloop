@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.0-rc.7
+- One approval, then no interruptions: after a plan is shown, reply `approve` (or `/proofloop:approve`). The prompt hook records the human approval for the pending plan hash and starts the run in the background; `proofloop wait <id>` follows it and the final report is summarized. No second approve command, no `--yes` prompts.
+- Planning and read-only `proofloop` commands (feature, bug, status, wait, report, test, audit, ...) no longer trigger permission prompts; chained or mutating commands still do.
+- A plan whose risk is below the engine's floor for its paths is raised with a warning instead of failing planning.
+- The report no longer prints `undefined — undefined` for denied actions.
 
 ## 1.0.0-rc.6
 - `proofloop audit` / `/proofloop:audit` (or typing "audit for 5000 users, p99 under 500ms"): capacity model, real latency probe (p50/p95/p99, errors) against targets, load-test gate, static scalability scan, and a system-design checklist review. Never reports ok unless something was measured. See docs/guides/audit-and-design.md.

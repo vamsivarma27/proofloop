@@ -47,9 +47,12 @@ describe('plan validation', () => {
     expect(validatePlan({ ...p, tasks: two }).errors.join()).toContain('cycle');
   });
 
-  it('cannot lower risk below the engine floor for sensitive paths', () => {
+  it('cannot lower risk below the engine floor for sensitive paths: it is raised, not rejected', () => {
     const v = validatePlan(validPlan({ affectedModules: [{ path: 'src/auth/session.ts', reason: 'login', status: 'confirmed' }], risk: { level: 'low', rationale: 'tiny change' } }));
-    expect(v.errors.join()).toContain('agents cannot lower risk');
+    expect(v.errors).toEqual([]);
+    expect(v.effectiveRisk).toBe('high');
+    expect(v.plan?.risk.level).toBe('high');
+    expect(v.warnings.join()).toContain('risk raised from "low" to "high"');
   });
 
   it('requires reproduction and regression test for bug plans', () => {
