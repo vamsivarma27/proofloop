@@ -28089,7 +28089,8 @@ function validatePlan(input2, opts = {}) {
     errors.push(e instanceof Error ? e.message : String(e));
   }
   const floor = classifyRisk(plan.affectedModules.map((m) => m.path));
-  if (riskRank(plan.risk.level) < riskRank(floor)) errors.push(`plan risk "${plan.risk.level}" is below the engine-computed minimum "${floor}" for the affected paths; agents cannot lower risk`);
+  const raised = riskRank(plan.risk.level) < riskRank(floor);
+  if (raised) warnings.push(`risk raised from "${plan.risk.level}" to "${floor}": that is the engine's minimum for the affected paths (agents can raise risk, never lower it)`);
   if (opts.protocolId === "bug" && !plan.regressionTest) errors.push("bug plans need a regressionTest (file + command)");
   if (opts.protocolId === "bug" && !plan.reproduction) errors.push("bug plans need a reproduction record (reproducible: yes|no|unknown)");
   if (opts.protocolId === "bug" && !(plan.rootCause?.confirmed || plan.rootCause?.uncertainty)) errors.push("bug plans need a rootCause with a confirmed cause or an explicit uncertainty");
@@ -28106,8 +28107,8 @@ function validatePlan(input2, opts = {}) {
     for (const m of plan.affectedModules) if (m.status === "hypothesis") warnings.push(`${m.path} is a hypothesis, not a confirmed impact`);
     for (const a of plan.assumptions) if (!a.confirmed && riskRank(a.impact) >= riskRank("high")) warnings.push(`high-impact assumption ${a.id} is unconfirmed`);
   }
-  const effectiveRisk = riskRank(plan.risk.level) >= riskRank(floor) ? plan.risk.level : floor;
-  return { plan: errors.length === 0 ? plan : void 0, errors, warnings, effectiveRisk };
+  const effectiveRisk = raised ? floor : plan.risk.level;
+  return { plan: errors.length === 0 ? raised ? { ...plan, risk: { ...plan.risk, level: floor } } : plan : void 0, errors, warnings, effectiveRisk };
 }
 function renderPlanMarkdown(plan, hash2, version2) {
   const L = [];
@@ -28247,11 +28248,12 @@ var init_workflow = __esm({
 });
 
 // src/cli/main.ts
-import { closeSync, openSync, readFileSync as readFileSync19, readSync } from "node:fs";
+import { closeSync, openSync as openSync2, readFileSync as readFileSync19, readSync } from "node:fs";
 
 // src/cli/index.ts
 import { parseArgs } from "node:util";
-import { existsSync as existsSync19, mkdirSync as mkdirSync15, readFileSync as readFileSync18, writeFileSync as writeFileSync14 } from "node:fs";
+import { spawn as spawn3 } from "node:child_process";
+import { existsSync as existsSync19, mkdirSync as mkdirSync15, openSync, readFileSync as readFileSync18, writeFileSync as writeFileSync14 } from "node:fs";
 import { dirname as dirname9, join as join30, resolve as resolve2 } from "node:path";
 
 // src/shared/exec.ts
@@ -28869,7 +28871,7 @@ import { dirname, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/version.ts
-var ENGINE_VERSION = "1.0.0-rc.6";
+var ENGINE_VERSION = "1.0.0-rc.7";
 
 // src/protocol/registry.ts
 init_schema();
@@ -30740,11 +30742,16 @@ function renderReport(store, runId, opts = {}) {
   if (!opts.forPr) {
     L.push("", "## State history", ...history.map((h) => `- ${h.ts} ${String(h.data.from)} \u2192 ${String(h.data.to)}${h.data.reason ? ` (${String(h.data.reason)})` : ""}`));
     const denied = store.events(runId, "policy.denied");
-    if (denied.length) L.push("", "## Denied actions", ...denied.map((d) => `- ${String(d.data.command)} \u2014 ${String(d.data.reason)}`));
+    if (denied.length) L.push("", "## Denied actions", ...denied.map((d) => `- ${describeDenial(d.data)}`));
   }
   if (run.sourceIssueNumber && opts.forPr) L.push("", `Closes #${run.sourceIssueNumber}`);
   return `${L.join("\n")}
 `;
+}
+function describeDenial(d) {
+  if (d.denial) return `agent permission refused: ${JSON.stringify(d.denial).slice(0, 200)}`;
+  const what = typeof d.command === "string" ? d.command : typeof d.gate === "string" ? `gate ${d.gate}` : "action";
+  return `${what} \u2014 ${String(d.reason ?? "refused by policy")}`;
 }
 function limitations(store, runId, plan) {
   const out = [];
@@ -33878,6 +33885,7 @@ Total spend: $${r3.totalCostUsd} (cap $${r3.perTaskCapUsd} per task per arm).
 // src/cli/hook.ts
 init_paths();
 var MUTATING = /* @__PURE__ */ new Set(["approve", "reject", "cancel", "pause", "resume", "run", "gates", "artifact", "perf", "blueprint", "waive"]);
+var SAFE = /* @__PURE__ */ new Set(["feature", "bug", "diagnose", "performance", "refactor", "security", "start-project", "status", "wait", "report", "readiness", "ledger", "memory", "protocols", "verify", "test", "audit", "selftest", "setup"]);
 var HUMAN_ONLY = /* @__PURE__ */ new Set(["approve", "reject"]);
 var WRAPPERS = /* @__PURE__ */ new Set(["env", "sudo", "node", "npx", "bash", "sh", "zsh", "command", "exec", "time", "nohup"]);
 var ASSIGNMENT = /^\w+=/;
@@ -33918,10 +33926,15 @@ function bashDecision(command, agent) {
     if (verdict.verdict === "needs_approval" && (verdict.cls === "critical" || verdict.cls === "destructive"))
       return agent ? { decision: "deny", reason: `ProofLoop policy: ${verdict.reason} requires explicit human approval immediately before the action` } : { decision: "ask", reason: `ProofLoop policy: ${verdict.reason}; confirm this ${verdict.cls} action` };
   }
+  if (isPlainSafeCall(command, subs)) return { decision: "allow", reason: "read-only or planning ProofLoop command", explicit: true };
   return { decision: "allow", reason: "no policy objection" };
 }
+function isPlainSafeCall(command, subs) {
+  const bare = command.replaceAll("${CLAUDE_PLUGIN_ROOT}", "").replace(/'[^']*'/g, "").replace(/"[^"$`\\]*"/g, "");
+  return new Set(subs).size === 1 && SAFE.has(subs[0]) && !/[;&|<>`$()\n\\]/.test(bare) && !/\bsetup\b.*--yes/.test(bare);
+}
 function hookOutput(d) {
-  if (d.decision === "allow") return "";
+  if (d.decision === "allow" && !d.explicit) return "";
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: d.decision, permissionDecisionReason: d.reason } });
 }
 var FILLER = /* @__PURE__ */ new Set(["please", "proofloop", "run", "the", "and", "only", "suite", "suites", "test", "tests", "testing", "every", "everything", "all"]);
@@ -33953,6 +33966,17 @@ function promptHookOutput(prompt) {
   const additionalContext = `The user asked to run the ProofLoop test protocol on THIS project. Follow the /proofloop:test skill now, covering ${which}: full checks on the current commit, browser journeys with personas, and a regression comparison with the base branch. Do not ask which suites; run it.`;
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext } });
 }
+var APPROVE_PHRASES = /* @__PURE__ */ new Set(["approve", "approved", "approve it", "approve plan", "approve the plan", "approve and run", "approve run", "lgtm", "go ahead", "proceed", "run it", "ship it"]);
+var RUN_ID = /\brun_[a-z0-9]+\b/i;
+function approvalRequest(prompt) {
+  const slash = /^\/proofloop:approve\b\s*(\S*)\s*$/i.exec(prompt.trim());
+  if (slash) return slash[1] ? { runId: slash[1] } : {};
+  const text2 = prompt.toLowerCase().replace(/[^a-z0-9_\s]/g, " ").replace(/\s+/g, " ").trim();
+  const runId = RUN_ID.exec(text2)?.[0];
+  const phrase = text2.replace(RUN_ID, "").replace(/\s+/g, " ").trim();
+  return APPROVE_PHRASES.has(phrase) ? runId ? { runId } : {} : null;
+}
+var approvedContext = (runId, hash2, log) => `The user approved the plan (${hash2.slice(0, 12)}) for ${runId} with their message. Approval is recorded and the run has started in the background (log: ${log}). Do not run approve or run yourself and do not ask anything. Run \`proofloop wait ${runId}\` (blocks up to 9 minutes, never prompts); if it says the run is still going, run it again. When it ends, run \`proofloop report ${runId}\` and tell the user: final state, each gate PASS/FAIL/BLOCKED, the PR link if any, and what is not proven.`;
 
 // src/cli/index.ts
 init_schema2();
@@ -33963,7 +33987,7 @@ var HELP = `proofloop ${ENGINE_VERSION}
 
 Task commands:  feature|bug|diagnose|performance|refactor|security "<request>" \xB7 start-project "<idea>"
 Blueprint:      blueprint next-question|answer|defaults|submit|show <id>
-Lifecycle:      status [id] \xB7 approve <id> --plan-hash H [--scope S] \xB7 reject <id> --comment C \xB7 run <id> \xB7 resume <id> [--retry] \xB7 cancel <id> \xB7 pause <id>
+Lifecycle:      status [id] \xB7 wait <id> [--timeout s] \xB7 approve <id> --plan-hash H [--scope S] \xB7 reject <id> --comment C \xB7 run <id> \xB7 resume <id> [--retry] \xB7 cancel <id> \xB7 pause <id>
 Evidence:       verify \xB7 report <id> [--out file] \xB7 readiness <id> \xB7 plan show <id>
 Memory:         ledger export <id> [--format json|markdown] [--out file] \xB7 memory <id> \xB7 incident list|show <id>|confirm <id> --text T --yes
 Artifacts:      artifact add|list <id> [name --file f] \xB7 perf record|import-k6 <id> --file f
@@ -34000,13 +34024,13 @@ async function runCli(argv, c) {
     args: argv,
     allowPositionals: true,
     strict: false,
-    options: { root: { type: "string" }, json: { type: "boolean" }, yes: { type: "boolean" }, retry: { type: "boolean" }, "plan-hash": { type: "string" }, scope: { type: "string" }, comment: { type: "string" }, out: { type: "string" }, github: { type: "string" }, file: { type: "string" }, again: { type: "boolean" }, runtime: { type: "string" }, "max-usd": { type: "string" }, "reuse-baseline": { type: "string" }, "total-usd": { type: "string" }, model: { type: "string" }, meta: { type: "string" }, format: { type: "string" }, topic: { type: "string" }, text: { type: "string" }, users: { type: "string" }, p95: { type: "string" }, p99: { type: "string" }, "error-rate": { type: "string" }, requests: { type: "string" }, path: { type: "string", multiple: true }, "file-bugs": { type: "boolean" }, "no-baseline": { type: "boolean" }, list: { type: "boolean" }, checklist: { type: "boolean" } }
+    options: { root: { type: "string" }, json: { type: "boolean" }, yes: { type: "boolean" }, retry: { type: "boolean" }, "plan-hash": { type: "string" }, scope: { type: "string" }, comment: { type: "string" }, out: { type: "string" }, github: { type: "string" }, file: { type: "string" }, again: { type: "boolean" }, runtime: { type: "string" }, "max-usd": { type: "string" }, "reuse-baseline": { type: "string" }, "total-usd": { type: "string" }, model: { type: "string" }, meta: { type: "string" }, format: { type: "string" }, topic: { type: "string" }, text: { type: "string" }, users: { type: "string" }, p95: { type: "string" }, p99: { type: "string" }, "error-rate": { type: "string" }, requests: { type: "string" }, path: { type: "string", multiple: true }, "file-bugs": { type: "boolean" }, "no-baseline": { type: "boolean" }, list: { type: "boolean" }, checklist: { type: "boolean" }, timeout: { type: "string" } }
   });
   const [cmd2, ...rest] = positionals;
   const json2 = values.json === true;
   try {
     if (!cmd2 || cmd2 === "help" || cmd2 === "--help") return c.io.out(HELP), EXIT.ok;
-    if (cmd2 === "hook") return hook(c, rest[0]);
+    if (cmd2 === "hook") return await hook(c, rest[0]);
     if (cmd2 === "eval") return await evalCmd(c, rest, values, json2, await rootOf(c, values.root));
     if (cmd2 === "selftest") return await testCmd(c, rest, values, json2, await rootOf(c, values.root));
     if (cmd2 === "protocols") return protocols(c, json2, await rootOf(c, values.root));
@@ -34044,6 +34068,9 @@ async function withEngine(c, root, cmd2, rest, v, json2) {
     }
     case "status":
       return status(c, e, id3, json2);
+    case "wait":
+      if (!id3) return c.io.err("usage: proofloop wait <id> [--timeout seconds]\n"), EXIT.usage;
+      return await waitFor(c, e, id3, Number(v.timeout ?? WAIT_DEFAULT_S), json2);
     case "run":
     case "resume": {
       if (!id3) return c.io.err(`usage: proofloop ${cmd2} <id>
@@ -34121,6 +34148,25 @@ ${gates}
   show(c, json2, runs.map((r3) => ({ id: r3.id, protocol: r3.protocolId, state: r3.state, intent: r3.intent })), runs.length ? `${runs.map((r3) => `${r3.id}  ${r3.state.padEnd(16)} ${r3.protocolId.padEnd(15)} ${r3.intent.slice(0, 60)}`).join("\n")}
 ` : "no active runs\n");
   return EXIT.ok;
+}
+var WAIT_DEFAULT_S = 540;
+var WAIT_POLL_MS = 3e3;
+var WAIT_STOPS = /* @__PURE__ */ new Set(["COMPLETE", "CANCELLED", "BLOCKED", "PAUSED", "AWAITING_APPROVAL", "REVIEW_REQUIRED", "PR_OPEN"]);
+async function waitFor(c, e, id3, seconds, json2) {
+  const end = Date.now() + (Number.isFinite(seconds) && seconds > 0 ? seconds : WAIT_DEFAULT_S) * 1e3;
+  let last = "";
+  for (; ; ) {
+    const state = e.d.store.getRun(id3).state;
+    if (state !== last) c.io.out(`${(/* @__PURE__ */ new Date()).toISOString().slice(11, 19)} ${state}
+`);
+    last = state;
+    if (WAIT_STOPS.has(state)) break;
+    if (Date.now() >= end) return c.io.out(`still running (${state}); run: proofloop wait ${id3}
+`), EXIT.ok;
+    await new Promise((r3) => setTimeout(r3, WAIT_POLL_MS));
+  }
+  const code = status(c, e, id3, json2);
+  return last === "BLOCKED" ? EXIT.blocked : code;
 }
 function confirmed(c, question, yes) {
   if (yes) return true;
@@ -34381,10 +34427,32 @@ function validate2(c, files2) {
   }
   return bad ? EXIT.error : EXIT.ok;
 }
-function hook(c, event) {
+var promptContext = (additionalContext) => JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext } });
+async function approveByPrompt(c, cwd, wanted) {
+  const root = await rootOf({ ...c, cwd });
+  if (!existsSync19(join30(root, ".proofloop"))) return "";
+  const e = await engineOf(c, root);
+  const waiting = e.d.store.listRuns({ activeOnly: true }).filter((r3) => r3.state === "AWAITING_APPROVAL" && (!wanted || r3.id === wanted));
+  const run = waiting[0];
+  if (!run?.currentPlanHash) return "";
+  if (waiting.length > 1) return promptContext(`Several plans await approval (${waiting.map((r3) => r3.id).join(", ")}). Nothing was approved. Ask the user which one, and tell them to reply "approve <run-id>".`);
+  approvePlan(e.d.store, run.id, { planHash: run.currentPlanHash, by: humanActor(), comment: "approved by the user in chat" });
+  const log = join30(root, ".proofloop", "logs", `run-${run.id}.log`);
+  mkdirSync15(dirname9(log), { recursive: true });
+  (c.startRun ?? ((r3, id3, file2) => detachedRun(r3, id3, file2, c.env)))(root, run.id, log);
+  return promptContext(approvedContext(run.id, run.currentPlanHash, log));
+}
+function detachedRun(root, runId, log, env) {
+  const fd = openSync(log, "a");
+  spawn3(process.execPath, [...process.execArgv, process.argv[1], "run", runId, "--root", root], { detached: true, stdio: ["ignore", fd, fd], env }).unref();
+}
+async function hook(c, event) {
   if (event === "user-prompt") {
     try {
-      c.io.out(promptHookOutput(String(JSON.parse(c.io.stdin()).prompt ?? "")));
+      const input3 = JSON.parse(c.io.stdin());
+      const prompt = String(input3.prompt ?? "");
+      const approval = approvalRequest(prompt);
+      c.io.out(approval ? await approveByPrompt(c, typeof input3.cwd === "string" ? input3.cwd : c.cwd, approval.runId) : promptHookOutput(prompt));
     } catch {
     }
     return 0;
@@ -34499,7 +34567,7 @@ var io = {
   isTTY: Boolean(process.stdin.isTTY && process.stdout.isTTY),
   confirm: (q) => {
     process.stderr.write(`${q} [y/N] `);
-    const fd = openSync("/dev/tty", "r");
+    const fd = openSync2("/dev/tty", "r");
     const buf = Buffer.alloc(1);
     let line = "";
     try {
