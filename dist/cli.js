@@ -28871,7 +28871,7 @@ import { dirname, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/version.ts
-var ENGINE_VERSION = "1.0.0-rc.6";
+var ENGINE_VERSION = "1.0.0-rc.7";
 
 // src/protocol/registry.ts
 init_schema();
@@ -30742,11 +30742,16 @@ function renderReport(store, runId, opts = {}) {
   if (!opts.forPr) {
     L.push("", "## State history", ...history.map((h) => `- ${h.ts} ${String(h.data.from)} \u2192 ${String(h.data.to)}${h.data.reason ? ` (${String(h.data.reason)})` : ""}`));
     const denied = store.events(runId, "policy.denied");
-    if (denied.length) L.push("", "## Denied actions", ...denied.map((d) => `- ${String(d.data.command)} \u2014 ${String(d.data.reason)}`));
+    if (denied.length) L.push("", "## Denied actions", ...denied.map((d) => `- ${describeDenial(d.data)}`));
   }
   if (run.sourceIssueNumber && opts.forPr) L.push("", `Closes #${run.sourceIssueNumber}`);
   return `${L.join("\n")}
 `;
+}
+function describeDenial(d) {
+  if (d.denial) return `agent permission refused: ${JSON.stringify(d.denial).slice(0, 200)}`;
+  const what = typeof d.command === "string" ? d.command : typeof d.gate === "string" ? `gate ${d.gate}` : "action";
+  return `${what} \u2014 ${String(d.reason ?? "refused by policy")}`;
 }
 function limitations(store, runId, plan) {
   const out = [];

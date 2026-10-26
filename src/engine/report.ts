@@ -53,10 +53,17 @@ export function renderReport(store: Store, runId: string, opts: { forPr?: boolea
   if (!opts.forPr) {
     L.push('', '## State history', ...history.map((h) => `- ${h.ts} ${String(h.data.from)} → ${String(h.data.to)}${h.data.reason ? ` (${String(h.data.reason)})` : ''}`));
     const denied = store.events(runId, 'policy.denied');
-    if (denied.length) L.push('', '## Denied actions', ...denied.map((d) => `- ${String(d.data.command)} — ${String(d.data.reason)}`));
+    if (denied.length) L.push('', '## Denied actions', ...denied.map((d) => `- ${describeDenial(d.data)}`));
   }
   if (run.sourceIssueNumber && opts.forPr) L.push('', `Closes #${run.sourceIssueNumber}`);
   return `${L.join('\n')}\n`;
+}
+
+/** Denial events come in three shapes: a gate command, a gate stage, and a permission the agent session was refused. */
+export function describeDenial(d: Record<string, unknown>): string {
+  if (d.denial) return `agent permission refused: ${JSON.stringify(d.denial).slice(0, 200)}`;
+  const what = typeof d.command === 'string' ? d.command : typeof d.gate === 'string' ? `gate ${d.gate}` : 'action';
+  return `${what} — ${String(d.reason ?? 'refused by policy')}`;
 }
 
 type AnyPlan = Partial<Plan> & { assumptions?: Array<{ id: string; text: string; confirmed?: boolean; status?: string }> };

@@ -323,3 +323,12 @@ describe('one approval, no prompts', () => {
     expect(done.text()).toContain('PR_OPEN');
   });
 });
+
+describe('report denial lines', () => {
+  it('never print "undefined" for any denial shape', async () => {
+    const { describeDenial } = await import('../src/engine/report');
+    expect(describeDenial({ command: 'rm -rf x', reason: 'destructive' })).toBe('rm -rf x — destructive');
+    expect(describeDenial({ gate: 'build', reason: 'production needs approval' })).toBe('gate build — production needs approval');
+    expect(describeDenial({ source: 'claude-permissions', denial: { tool_name: 'Bash' } })).toContain('Bash');
+  });
+});
